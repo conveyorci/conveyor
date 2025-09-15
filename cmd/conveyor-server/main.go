@@ -136,8 +136,16 @@ func (s *Server) githubWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	// Parse and queue the jobs
 	var p pipeline.Pipeline
 	if err := yaml.Unmarshal(data, &p); err != nil {
+		log.Printf("ERROR: Could not parse .conveyor.yml: %v", err)
 		http.Error(w, "Could not parse .conveyor.yml", http.StatusBadRequest)
 		return
+	}
+
+	// Log how many jobs were found after parsing
+	log.Printf("Parsed .conveyor.yml and found %d jobs.", len(p.Jobs))
+
+	if len(p.Jobs) == 0 {
+		log.Println("WARN: No jobs found in .conveyor.yml, nothing to queue.")
 	}
 
 	for jobName, job := range p.Jobs {
@@ -149,10 +157,7 @@ func (s *Server) githubWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Queued job '%s' with ID %s from webhook", jobName, jobID)
 	}
 
-	_, err1 := fmt.Fprintf(w, "Webhook processed. Queued %d jobs.\n", len(p.Jobs))
-	if err1 != nil {
-		return
-	}
+	fmt.Fprintf(w, "Webhook processed. Queued %d jobs.\n", len(p.Jobs))
 }
 
 // --- Main Function ---
