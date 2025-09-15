@@ -1,17 +1,7 @@
-name: "Conveyor Awesome Build"
+name: "My Pipeline"
 
-steps:
-  - name: "Run Go Tests"
-    executor: "docker"
-    image: "golang:1.21-alpine"
-    command: "go test -v ./..."
-
-  - name: "Show current directory"
-    executor: "docker"
-    image: "alpine:latest"
-    command: "ls -la"
-
-  - name: "Finished"
-    executor: "docker"
-    image: "alpine:latest"
-    command: "echo 'Secure pipeline complete!'"
+jobs:
+  build:
+    image: alpine:latest
+    commands:
+      - "echo hello"
