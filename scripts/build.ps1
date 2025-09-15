@@ -1,5 +1,4 @@
-$BinaryName = "conveyor"
-$BuildPath = "./cmd/conveyor/"
+$Binaries = @("conveyor-server", "conveyor-agent")
 $OutputDir = "dist"
 
 Write-Host "Starting build process..." -ForegroundColor Green
@@ -18,27 +17,33 @@ $targets = @(
 
 $env:CGO_ENABLED = "0"
 
-foreach ($target in $targets) {
-    Write-Host "Building for $($target.Description)..." -ForegroundColor Cyan
+foreach ($binaryName in $Binaries) {
+    Write-Host "--- Building $($binaryName) ---" -ForegroundColor Yellow
+    $buildPath = "./cmd/$($binaryName)/"
 
-    $env:GOOS = $target.OS
-    $env:GOARCH = $target.Arch
-    if ($null -ne $target.GoArm) {
-        $env:GOARM = $target.GoArm
+    foreach ($target in $targets) {
+        Write-Host "Building for $($target.Description)..." -ForegroundColor Cyan
+
+        $env:GOOS = $target.OS
+        $env:GOARCH = $target.Arch
+        if ($null -ne $target.GoArm) {
+            $env:GOARM = $target.GoArm
+        }
+
+        $outputPath = Join-Path $OutputDir "$($binaryName)-$($target.Suffix)"
+
+        go build -ldflags="-s -w" -o $outputPath $buildPath
+
+        if ($null -ne $target.GoArm) {
+            Remove-Item env:GOARM
+        }
     }
-
-    $OutputPath = Join-Path $OutputDir "$($BinaryName)-$($target.Suffix)"
-
-    go build -ldflags="-s -w" -o $OutputPath $BuildPath
-
-    if ($null -ne $target.GoArm) {
-        Remove-Item env:GOARM
-    }
+    Write-Host "--- Finished building $($binaryName) ---" -ForegroundColor Yellow
+    Write-Host ""
 }
 
 Remove-Item env:CGO_ENABLED
 Remove-Item env:GOOS
 Remove-Item env:GOARCH
 
-Write-Host ""
-Write-Host "Build complete! Binaries are located in the '$OutputDir' directory." -ForegroundColor Green
+Write-Host "Build complete! All binaries are located in the '$OutputDir' directory." -ForegroundColor Green
