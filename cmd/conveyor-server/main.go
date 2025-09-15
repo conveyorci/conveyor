@@ -95,43 +95,43 @@ func (s *Server) githubWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	pushEvent, ok := event.(*github.PushEvent)
 	if !ok {
 		log.Println("Received webhook, but it was not a push event.")
-		_, err := fmt.Fprint(w, "Event was not a push event, ignoring.")
-		if err != nil {
-			return
-		}
+		fmt.Fprint(w, "Event was not a push event, ignoring.")
 		return
 	}
 
 	repoURL := *pushEvent.Repo.CloneURL
 	log.Printf("Received push event for repo: %s", repoURL)
 
-	// Create a temporary directory to clone the repo
 	tempDir, err := os.MkdirTemp("", "conveyor-workspace-*")
 	if err != nil {
+		log.Printf("ERROR: Failed to create temp workspace: %v", err)
 		http.Error(w, "Failed to create temp workspace", http.StatusInternalServerError)
 		return
 	}
-	defer func(path string) {
-		err := os.RemoveAll(path)
-		if err != nil {
-			log.Printf("WARN: Failed to remove temp workspace: %v", err)
-		}
-	}(tempDir)
+	defer os.RemoveAll(tempDir)
+	log.Printf("Created temporary workspace: %s", tempDir)
 
-	// Clone the repo
+	// debugging
+	log.Printf("Cloning repository %s into %s", repoURL, tempDir)
 	cmd := exec.Command("git", "clone", repoURL, tempDir)
-	if err := cmd.Run(); err != nil {
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("ERROR: Failed to clone repository. Exit error: %v", err)
+		log.Printf("Git command output:\n%s", string(output))
 		http.Error(w, "Failed to clone repository", http.StatusInternalServerError)
 		return
 	}
+	log.Println("Successfully cloned repository.")
 
-	// Read the .conveyor.yml from the cloned repo
 	conveyorFile := filepath.Join(tempDir, ".conveyor.yml")
 	data, err := os.ReadFile(conveyorFile)
 	if err != nil {
+		log.Printf("ERROR: Could not read .conveyor.yml from repository: %v", err)
 		http.Error(w, "Could not read .conveyor.yml from repository", http.StatusBadRequest)
 		return
 	}
+	log.Println("Successfully read .conveyor.yml.")
 
 	// Parse and queue the jobs
 	var p pipeline.Pipeline
