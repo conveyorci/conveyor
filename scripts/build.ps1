@@ -11,8 +11,8 @@ New-Item -ItemType Directory -Path $OutputDir | Out-Null
 
 $targets = @(
     @{ OS = "linux"; Arch = "amd64"; GoArm = $null; Suffix = "linux-amd64"; Description = "Linux AMD64 (x64)" },
-    @{ OS = "linux"; Arch = "arm64"; GoArm = $null; Suffix = "linux-arm64"; Description = "Linux ARM64" },
-    @{ OS = "linux"; Arch = "arm";   GoArm = "7";    Suffix = "linux-armhf"; Description = "Linux ARMv7 (armhf)" }
+    @{ OS = "linux"; Arch = "arm64"; GoArm = $null; Suffix = "linux-arm64"; Description = "Linux ARM64" }
+    # @{ OS = "linux"; Arch = "arm";   GoArm = "7";    Suffix = "linux-armhf"; Description = "Linux ARMv7 (armhf)" }
 )
 
 $env:CGO_ENABLED = "0"

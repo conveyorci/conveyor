@@ -4,7 +4,9 @@ go 1.25.1
 
 require (
 	github.com/docker/docker v28.4.0+incompatible
+	github.com/google/go-github/v74 v74.0.0
 	github.com/google/uuid v1.6.0
+	github.com/mattn/go-sqlite3 v1.14.32
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -19,6 +21,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/sys/atomicwriter v0.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect

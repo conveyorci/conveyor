@@ -1,0 +1,53 @@
+name: Build Conveyor
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux]
+        goarch: [amd64, arm64]
+
+    env:
+      CGO_ENABLED: 1
+      GO111MODULE: on
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.1' # adjust to your Go version
+
+      - name: Install cross-compilers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-x86-64-linux-gnu
+
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+          for binary in conveyor-server conveyor-agent; do
+            echo "Building $binary for ${{ matrix.goos }}/${{ matrix.goarch }}"
+            export GOOS=${{ matrix.goos }}
+            export GOARCH=${{ matrix.goarch }}
+            if [ "${{ matrix.goarch }}" = "arm64" ]; then
+              export CC=aarch64-linux-gnu-gcc
+            else
+              export CC=x86_64-linux-gnu-gcc
+            fi
+            go build -ldflags="-s -w" -o dist/${binary}-${GOOS}-${GOARCH} ./cmd/$binary
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: conveyor-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
