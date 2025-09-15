@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 
@@ -77,16 +78,21 @@ func (s *Store) RequestJob() (*shared.JobRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback() // Rollback if anything fails
+	defer func(tx *sql.Tx) {
+		err := tx.Rollback()
+		if err != nil {
+			log.Printf("could not rollback transaction: %v", err)
+		}
+	}(tx) // Rollback if anything fails
 
 	// Find a pending job, locking the row for update.
-	query := `SELECT id, job_data FROM jobs WHERE status = ? ORDER BY created_at ASC LIMIT 1 FOR UPDATE`
+	query := `SELECT id, job_data FROM jobs WHERE status = ? ORDER BY created_at ASC LIMIT 1`
 	row := tx.QueryRow(query, shared.StatusPending)
 
 	var jobReq shared.JobRequest
 	var jobData string
 	if err := row.Scan(&jobReq.ID, &jobData); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil // No pending jobs, not an error
 		}
 		return nil, err
