@@ -167,19 +167,15 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/jobs/request", server.requestJobHandler)
 	mux.HandleFunc("/api/jobs/update/", server.updateJobHandler)
-	mux.HandleFunc("/api/webhooks/github", server.githubWebhookHandler)
+	mux.HandleFunc("/webhooks/github", server.githubWebhookHandler)
 
-	// Create a file server to serve the contents of the 'public' directory.
-	fileServer := http.FileServer(http.Dir("./public"))
-
-	// Tell the router to use the file server for all paths that are not API paths.
-	mux.Handle("/", fileServer)
+	staticFS := getStaticFS()
+	mux.Handle("/", http.FileServer(staticFS))
 
 	port := "8080"
 	log.Printf("Starting Conveyor Server on port %s", port)
-	log.Println("Access the placeholder UI at http://localhost:8080")
+	log.Println("Access the UI at http://localhost:8080")
 
-	// Use our new mux router instead of the default.
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
