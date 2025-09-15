@@ -79,18 +79,13 @@ func (s *Store) UpdateJobStatus(id string, status shared.JobStatus, errorMsg str
 // RequestJob finds a 'pending' job, updates its status to 'running', and returns it.
 // This is done in a transaction to prevent race conditions between agents.
 func (s *Store) RequestJob() (*shared.JobRequest, error) {
+	// Start the transaction
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, err
 	}
-	defer func(tx *sql.Tx) {
-		err := tx.Rollback()
-		if err != nil {
-			log.Printf("could not rollback transaction: %v", err)
-		}
-	}(tx) // Rollback if anything fails
 
-	// Find a pending job, locking the row for update.
+	// Find a pending job
 	query := `SELECT id, job_data FROM jobs WHERE status = ? ORDER BY created_at ASC LIMIT 1`
 	row := tx.QueryRow(query, shared.StatusPending)
 
@@ -98,7 +93,18 @@ func (s *Store) RequestJob() (*shared.JobRequest, error) {
 	var jobData string
 	if err := row.Scan(&jobReq.ID, &jobData); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil // No pending jobs, not an error
+			// This is not an error, it's an empty queue.
+			// We must commit the empty transaction to release locks.
+			err := tx.Commit()
+			if err != nil {
+				return nil, err
+			}
+			return nil, nil
+		}
+		// Any other scan error is a real problem, so we roll back.
+		err := tx.Rollback()
+		if err != nil {
+			return nil, err
 		}
 		return nil, err
 	}
@@ -106,15 +112,23 @@ func (s *Store) RequestJob() (*shared.JobRequest, error) {
 	// Update the job's status to 'running'
 	updateQuery := `UPDATE jobs SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
 	if _, err := tx.Exec(updateQuery, shared.StatusRunning, jobReq.ID); err != nil {
+		err := tx.Rollback()
+		if err != nil {
+			return nil, err
+		}
 		return nil, err
 	}
 
-	// Unmarshal the job data
 	if err := json.Unmarshal([]byte(jobData), &jobReq.Job); err != nil {
+		err := tx.Rollback()
+		if err != nil {
+			return nil, err
+		}
 		return nil, err
 	}
 
-	// If everything succeeded, commit the transaction
+	// If everything succeeded, commit the transaction and return the job.
+	// If the commit fails, the transaction is automatically rolled back by the driver.
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
