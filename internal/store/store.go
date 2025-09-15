@@ -28,6 +28,11 @@ func NewStore(dataSourceName string) (*Store, error) {
 		return nil, fmt.Errorf("could not connect to database: %w", err)
 	}
 
+	// Enable Write-Ahead Logging for better concurrency.
+	if _, err := db.Exec(`PRAGMA journal_mode = WAL;`); err != nil {
+		return nil, fmt.Errorf("could not enable WAL mode: %w", err)
+	}
+
 	if err := createSchema(db); err != nil {
 		return nil, fmt.Errorf("could not create schema: %w", err)
 	}
