@@ -14,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/conveyorci/conveyor/internal/pipeline"
+	"github.com/conveyorci/conveyor/internal/serverui"
 	"github.com/conveyorci/conveyor/internal/shared"
 	"github.com/conveyorci/conveyor/internal/store"
 )
@@ -169,8 +170,7 @@ func main() {
 	mux.HandleFunc("/api/jobs/update/", server.updateJobHandler)
 	mux.HandleFunc("/webhooks/github", server.githubWebhookHandler)
 
-	staticFS := getStaticFS()
-	mux.Handle("/", http.FileServer(staticFS))
+	mux.Handle("/", serverui.New())
 
 	port := "8080"
 	log.Printf("Starting Conveyor Server on port %s", port)
