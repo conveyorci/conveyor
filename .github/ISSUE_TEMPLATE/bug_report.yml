@@ -3,7 +3,7 @@ description: "Create a report to help us improve Conveyor CI"
 title: "[Bug]: "
 labels: [ "bug", "triage" ]
 assignees:
-  - # your-github-username
+  - "techplayz32"
 body:
   - type: markdown
     attributes:
