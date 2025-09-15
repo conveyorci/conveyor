@@ -135,3 +135,33 @@ func (s *Store) RequestJob() (*shared.JobRequest, error) {
 
 	return &jobReq, nil
 }
+
+// ListJobs retrieves all jobs from the database, newest first.
+func (s *Store) ListJobs() ([]shared.JobRequest, error) {
+	query := `SELECT id, status, job_data, error_message FROM jobs ORDER BY created_at DESC`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var jobs []shared.JobRequest
+	for rows.Next() {
+		var jobReq shared.JobRequest
+		var jobData, errorMsg sql.NullString // Use NullString for optional fields
+		if err := rows.Scan(&jobReq.ID, &jobReq.Status, &jobData, &errorMsg); err != nil {
+			return nil, err
+		}
+		if jobData.Valid {
+			err := json.Unmarshal([]byte(jobData.String), &jobReq.Job)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if errorMsg.Valid {
+			jobReq.Error = errorMsg.String
+		}
+		jobs = append(jobs, jobReq)
+	}
+	return jobs, nil
+}

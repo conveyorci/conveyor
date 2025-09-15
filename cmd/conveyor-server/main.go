@@ -70,6 +70,20 @@ func (s *Server) updateJobHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (s *Server) listJobsHandler(w http.ResponseWriter, r *http.Request) {
+	jobs, err := s.store.ListJobs()
+	if err != nil {
+		http.Error(w, "Failed to retrieve jobs", http.StatusInternalServerError)
+		log.Printf("ERROR: listJobsHandler: %v", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	err1 := json.NewEncoder(w).Encode(jobs)
+	if err1 != nil {
+		return
+	}
+}
+
 func (s *Server) githubWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	secret := os.Getenv("GITHUB_WEBHOOK_SECRET")
 	if secret == "" {
@@ -171,6 +185,7 @@ func main() {
 	server := NewServer(db)
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/jobs", server.listJobsHandler)
 	mux.HandleFunc("/api/jobs/request", server.requestJobHandler)
 	mux.HandleFunc("/api/jobs/update/", server.updateJobHandler)
 	mux.HandleFunc("/webhooks/github", server.githubWebhookHandler)
