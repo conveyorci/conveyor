@@ -1,0 +1,40 @@
+name: "Feature Request"
+description: "Suggest an idea or enhancement for Conveyor CI"
+title: "[Feature]: "
+labels: [ "enhancement", "needs-discussion" ]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to suggest a new feature!
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Is your feature request related to a problem? Please describe."
+      description: "A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]"
+      placeholder: "It's difficult to see real-time logs from my running jobs..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: "Describe the solution you'd like"
+      description: "A clear and concise description of what you want to happen."
+      placeholder: "I would like a web UI that connects via WebSockets to the agent and streams the logs as they happen."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Describe alternatives you've considered"
+      description: "A clear and concise description of any alternative solutions or features you've considered."
+      placeholder: "Alternatively, the agent could just post the full log back to the server after the job is complete."
+
+  - type: textarea
+    id: context
+    attributes:
+      label: "Additional context"
+      description: "Add any other context or screenshots about the feature request here."

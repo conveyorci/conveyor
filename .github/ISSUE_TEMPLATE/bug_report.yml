@@ -1,0 +1,96 @@
+name: "Bug Report"
+description: "Create a report to help us improve Conveyor CI"
+title: "[Bug]: "
+labels: [ "bug", "triage" ]
+assignees:
+  - # your-github-username
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report a bug! Please fill out the sections below to help us diagnose and fix the issue as quickly as possible.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: "Prerequisites"
+      description: "Please confirm the following before submitting."
+      options:
+        - label: "I have searched the existing issues and this is not a duplicate."
+          required: true
+        - label: "I am running the latest version of Conveyor CI."
+          required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: "Affected Component"
+      description: "Which part of Conveyor CI is affected?"
+      options:
+        - "Server (`conveyor-server`)"
+        - "Agent (`conveyor-agent`)"
+        - "Build Process / Scripts"
+        - "Documentation"
+        - "Other"
+      default: 0
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Bug Description"
+      description: "A clear and concise description of what the bug is."
+      placeholder: "When I trigger a build with a specific .conveyor.yml, the agent panics because..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: "Steps to Reproduce"
+      description: "Please provide detailed steps to reproduce the behavior."
+      placeholder: |
+        1. Use this `.conveyor.yml`: `...`
+        2. Start the server with these settings: `...`
+        3. Trigger a webhook.
+        4. See error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: "Expected Behavior"
+      description: "What did you expect to happen?"
+      placeholder: "I expected the job to run and complete successfully."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Relevant Logs"
+      description: "Please copy and paste any relevant log output from the server or agent. This is the most important part!"
+      placeholder: "```\n2025/09/16 10:30:00 ERROR: some specific error...\n```"
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: "Conveyor Version"
+      description: "What version or git commit hash are you running?"
+      placeholder: "e.g., v0.1.0 or git commit `a1b2c3d`"
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: "Operating System"
+      description: "What operating system is the affected component running on?"
+      options:
+        - "Linux (amd64)"
+        - "Linux (arm64)"
+        - "Windows"
+        - "macOS"
+    validations:
+      required: true
