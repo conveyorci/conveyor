@@ -1,7 +1,7 @@
-<h1 style="text-align: center;">Conveyor</h1>
-<p style="text-align: center;">An open-source automation (CI) server for your projects and team.</p>
+<h1 align="center">Conveyor</h1>
+<p align="center">An open-source automation (CI) server for your projects and team.</p>
 
-<div style="text-align: center;">
+<div align="center">
     <a href="https://github.com/conveyorci/conveyor/actions/workflows/workflow.yml"><img src="https://github.com/conveyorci/conveyor/actions/workflows/workflow.yml/badge.svg" alt="Build Conveyor"></a>
     <br>    
     <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/conveyorci/conveyor">
