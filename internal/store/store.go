@@ -10,6 +10,7 @@ import (
 	"github.com/conveyorci/conveyor/internal/pipeline"
 	"github.com/conveyorci/conveyor/internal/shared"
 	_ "github.com/mattn/go-sqlite3" // The underscore imports the driver for side effects
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Store manages all database operations.
@@ -43,7 +44,7 @@ func NewStore(dataSourceName string) (*Store, error) {
 
 // createSchema defines and creates the necessary tables.
 func createSchema(db *sql.DB) error {
-	query := `
+	jobsTable := `
     CREATE TABLE IF NOT EXISTS jobs (
         id TEXT PRIMARY KEY,
         status TEXT NOT NULL,
@@ -53,8 +54,58 @@ func createSchema(db *sql.DB) error {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     `
-	_, err := db.Exec(query)
+	if _, err := db.Exec(jobsTable); err != nil {
+		return err
+	}
+
+	usersTable := `
+	CREATE TABLE IF NOT EXISTS users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT UNIQUE NOT NULL,
+		password_hash TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	`
+	_, err := db.Exec(usersTable)
 	return err
+}
+
+// --- USERS ---
+
+// CreateUser hashes a password and stores a new user in the database.
+func (s *Store) CreateUser(username, password string) error {
+	// hashing the password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("could not hash password: %w", err)
+	}
+
+	query := `INSERT INTO users (username, password_hash) VALUES (?, ?)`
+	_, err = s.db.Exec(query, username, string(hashedPassword))
+	return err
+}
+
+// AuthenticateUser checks if a username and password are valid.
+func (s *Store) AuthenticateUser(username, password string) (bool, error) {
+	var hashedPassword string
+	query := `SELECT password_hash FROM users WHERE username = ?`
+	row := s.db.QueryRow(query, username)
+	if err := row.Scan(&hashedPassword); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil // User not found
+		}
+		return false, err
+	}
+
+	// Compare the provided password with the stored hash.
+	err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
+	if err == nil {
+		return true, nil // Passwords match
+	}
+	if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+		return false, nil // Passwords do not match
+	}
+	return false, err
 }
 
 // QueueJob inserts a new job into the database with 'pending' status.

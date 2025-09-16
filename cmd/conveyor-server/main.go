@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,8 +12,10 @@ import (
 
 	"github.com/google/go-github/v74/github"
 	"github.com/google/uuid"
+	"github.com/gorilla/sessions"
 	"gopkg.in/yaml.v3"
 
+	"github.com/conveyorci/conveyor/internal/config"
 	"github.com/conveyorci/conveyor/internal/pipeline"
 	"github.com/conveyorci/conveyor/internal/serverui"
 	"github.com/conveyorci/conveyor/internal/shared"
@@ -21,15 +24,81 @@ import (
 
 // Server holds dependencies like the database store.
 type Server struct {
-	store *store.Store
+	store       *store.Store
+	cookieStore *sessions.CookieStore
+	config      *config.Config
 }
 
 // NewServer creates a new server instance.
-func NewServer(store *store.Store) *Server {
-	return &Server{store: store}
+func NewServer(store *store.Store, cfg *config.Config) *Server {
+	authKey := []byte(cfg.Security.SessionKey)
+	cookieStore := sessions.NewCookieStore(authKey)
+	return &Server{store: store, cookieStore: cookieStore, config: cfg}
 }
 
 // --- HTTP Handlers ---
+
+// TODO: fix that all auth things after Vue UI will be done
+//func (s *Server) registrationHandler(w http.ResponseWriter, r *http.Request) {
+//	r.ParseForm()
+//	username := r.FormValue("username")
+//	password := r.FormValue("password")
+//
+//	if err := s.store.CreateUser(username, password); err != nil {
+//		http.Error(w, "Registration failed", http.StatusInternalServerError)
+//		log.Printf("ERROR: failed to create user: %v", err)
+//		return
+//	}
+//	// Redirect to login page on successful registration
+//	http.Redirect(w, r, "/login.html", http.StatusFound)
+//}
+
+func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+
+	ok, err := s.store.AuthenticateUser(username, password)
+	if err != nil || !ok {
+		http.Error(w, "Invalid username or password", http.StatusUnauthorized)
+		return
+	}
+
+	// Create a new session
+	session, _ := s.cookieStore.Get(r, "conveyor-session")
+	session.Values["authenticated"] = true
+	session.Values["username"] = username
+	session.Save(r, w)
+
+	// Redirect to the dashboard on successful login
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// TODO: fix that all auth things after Vue UI will be done
+//func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
+//	session, _ := s.cookieStore.Get(r, "conveyor-session")
+//	session.Values["authenticated"] = false
+//	session.Options.MaxAge = -1 // Delete the cookie
+//	session.Save(r, w)
+//	http.Redirect(w, r, "/login.html", http.StatusFound)
+//}
+
+// TODO: fix that all auth things after Vue UI will be done
+//func (s *Server) authMiddleware(next http.Handler) http.Handler {
+//	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+//		session, _ := s.cookieStore.Get(r, "conveyor-session")
+//
+//		// Check if user is authenticated
+//		if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
+//			// If not authenticated, redirect to the login page
+//			http.Redirect(w, r, "/login.html", http.StatusFound)
+//			return
+//		}
+//
+//		// If authenticated, call the next handler in the chain
+//		next.ServeHTTP(w, r)
+//	})
+//}
 
 func (s *Server) requestJobHandler(w http.ResponseWriter, r *http.Request) {
 	jobReq, err := s.store.RequestJob()
@@ -85,9 +154,10 @@ func (s *Server) listJobsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) githubWebhookHandler(w http.ResponseWriter, r *http.Request) {
-	secret := os.Getenv("GITHUB_WEBHOOK_SECRET")
+	// TODO: add check if it is project connected to Git origin
+	secret := s.config.Security.GitHubWebhookSecret
 	if secret == "" {
-		log.Println("WARN: GITHUB_WEBHOOK_SECRET is not set. Cannot validate webhooks.")
+		log.Println("WARN: GITHUB_WEBHOOK_SECRET is not set in the config file.")
 		http.Error(w, "Webhook secret not configured", http.StatusInternalServerError)
 		return
 	}
@@ -177,22 +247,44 @@ func (s *Server) githubWebhookHandler(w http.ResponseWriter, r *http.Request) {
 // --- Main Function ---
 
 func main() {
-	db, err := store.NewStore("conveyor.db")
+	configPath := flag.String("config", "config.yml", "Path to the configuration file")
+	flag.Parse()
+
+	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		log.Fatalf("FATAL: Failed to load configuration: %v", err)
+	}
+	log.Printf("Configuration loaded from %s", *configPath)
+
+	db, err := store.NewStore(cfg.Server.Database)
+	if err != nil {
+		log.Fatalf("FATAL: Failed to initialize database: %v", err)
 	}
 
-	server := NewServer(db)
-
+	server := NewServer(db, cfg)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/jobs", server.listJobsHandler)
+
+	// TODO: fix that all auth things after Vue UI will be done
+	// mux.HandleFunc("/api/register", server.registrationHandler)
+	mux.HandleFunc("/api/login", server.loginHandler)
+	// mux.HandleFunc("/api/logout", server.logoutHandler)
+
+	uiHandler := serverui.New()
+	mux.Handle("/login.html", uiHandler)
+	mux.Handle("/register.html", uiHandler)
+
+	apiJobsHandler := http.HandlerFunc(server.listJobsHandler)
+	mux.Handle("/api/jobs", apiJobsHandler)
+
+	// TODO: add token auth for jobs api endpoints
 	mux.HandleFunc("/api/jobs/request", server.requestJobHandler)
 	mux.HandleFunc("/api/jobs/update/", server.updateJobHandler)
 	mux.HandleFunc("/webhooks/github", server.githubWebhookHandler)
 
-	mux.Handle("/", serverui.New())
+	mux.Handle("/", uiHandler)
 
-	port := "8080"
+	// TODO: think about config for Docker's Conveyor image/container
+	port := cfg.Server.Port
 	log.Printf("Starting Conveyor Server on port %s", port)
 	log.Println("Access the UI at http://localhost:8080")
 
