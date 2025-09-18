@@ -7,14 +7,16 @@ import (
 )
 
 //go:embed all:public
-var embeddedFS embed.FS
+var EmbeddedFS embed.FS
 
-// New returns an http.Handler that serves the embedded UI.
+// New returns a handler that serves the embedded UI files.
 func New() http.Handler {
-	subFS, err := fs.Sub(embeddedFS, "public")
+	// Create a filesystem that starts inside the 'public' directory
+	subFS, err := fs.Sub(EmbeddedFS, "public")
 	if err != nil {
-		panic("could not find public directory in embedded filesystem: " + err.Error())
+		panic("CRITICAL: could not find 'public' directory in embedded filesystem: " + err.Error())
 	}
 
+	// Return a standard file server
 	return http.FileServer(http.FS(subFS))
 }

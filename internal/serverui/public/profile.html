@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>User Profile - Conveyor CI</title>
+    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.css" rel="stylesheet" type="text/css">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.js"></script>
+    <style>
+        body {
+            background-color: #F9FAFB;
+        }
+
+        .main.container {
+            padding-top: 6em;
+            padding-bottom: 2em;
+        }
+    </style>
+</head>
+<body>
+<header class="ui fixed inverted green menu"></header>
+<div class="ui main container">
+    <div class="ui middle aligned centered grid">
+        <div class="row">
+            <div class="four wide column">
+                <div class="ui card">
+                    <div class="image" id="profile-avatar-large">
+                        <!-- avatar -->
+                    </div>
+                    <div class="content">
+                        <a class="header" id="profile-username">Loading...</a>
+                        <div class="meta">
+                            <span class="date" id="profile-created-at"></span>
+                        </div>
+                    </div>
+                    <div class="extra content">
+                        <a><i class="users icon"></i><span id="org-count">0</span> Organizations</a>
+                    </div>
+                </div>
+            </div>
+            <div class="twelve wide column">
+                <h2 class="ui header">My Organizations</h2>
+                <div class="ui relaxed divided list" id="org-list">
+                    <div class="ui active centered inline loader"></div>
+                </div>
+                <a class="ui green button" href="/orgs/new.html">
+                    <i class="plus icon"></i>
+                    Create New Organization
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="/js/components/header.js"></script>
+<script>
+    async function loadProfile() {
+        try {
+            const profileResponse = await fetch('/api/user/profile');
+
+            if (!profileResponse.ok) {
+                if (profileResponse.status === 401 || profileResponse.status === 403) {
+                    window.location.href = '/login.html';
+                    return;
+                }
+                throw new Error(`Profile API responded with status: ${profileResponse.status}`);
+            }
+
+            const profile = await profileResponse.json();
+
+            const firstLetter = (profile.username || '?').charAt(0).toUpperCase();
+            const colors = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef'];
+            const colorIndex = (firstLetter.charCodeAt(0) - 'A'.charCodeAt(0)) % colors.length;
+            const color = colors[colorIndex];
+            document.getElementById('profile-avatar-large').innerHTML = `
+                <div style="width: 100%; height: 290px; background-color: ${color}; color: white; display: flex; align-items: center; justify-content: center; font-size: 10rem; font-weight: bold;">
+                    ${firstLetter}
+                </div>
+            `;
+            document.getElementById('profile-username').textContent = profile.username;
+            document.getElementById('profile-created-at').textContent = `Joined on ${new Date(profile.created_at).toLocaleDateString()}`;
+
+            const orgsResponse = await fetch('/api/user/orgs');
+            if (!orgsResponse.ok) {
+                throw new Error(`Orgs API responded with status: ${orgsResponse.status}`);
+            }
+            const orgs = await orgsResponse.json();
+
+            const orgList = document.getElementById('org-list');
+            document.getElementById('org-count').textContent = orgs ? orgs.length : 0;
+
+            if (orgs && orgs.length > 0) {
+                orgList.innerHTML = orgs.map(org => `
+                    <a class="item" href="/orgs/settings.html?id=${org.id}">
+                        <i class="large users middle aligned icon"></i>
+                        <div class="content">
+                            <div class="header">${org.name}</div>
+                            <div class="description">Owner/Member</div>
+                        </div>
+                    </a>
+                `).join('');
+            } else {
+                orgList.innerHTML = '<div class="ui message"><p>You are not a member of any organizations.</p></div>';
+            }
+
+        } catch (error) {
+            console.error("Failed to load profile page:", error);
+
+            const pageContent = document.querySelector('.ui.main.container > .ui.grid');
+            if (pageContent) {
+                pageContent.innerHTML = `
+                    <div class="sixteen wide column">
+                        <div class="ui negative message">
+                            <div class="header">Could Not Load Page Data</div>
+                            <p>There was a problem communicating with the server. Please try refreshing the page. If the problem persists, you may need to log in again.</p>
+                            <a class="ui button" href="/login.html">Go to Login</a>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        renderHeader('.ui.fixed.menu');
+        loadProfile();
+    });
+</script>
+</body>
+</html>

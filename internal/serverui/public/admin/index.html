@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Admin - Conveyor CI</title>
+    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.css" rel="stylesheet" type="text/css">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.js"></script>
+    <style>
+        body {
+            background-color: #F9FAFB;
+        }
+
+        .main.container {
+            margin-top: 6em;
+        }
+    </style>
+</head>
+<body>
+<div class="ui fixed inverted green menu">
+    <div class="ui container">
+        <div class="header item"><i class="box icon"></i> Conveyor</div>
+        <a class="item" href="/repos/">Repositories</a>
+        <a class="item" href="#">Docs</a>
+        <a class="item" href="#">API</a>
+        <a class="active item" href="/admin/">Admin</a>
+        <div class="right menu">
+            <a class="item" href="/settings/"><i class="cog icon"></i></a>
+            <div class="item"><img class="ui avatar image" src="https://i.pravatar.cc/40"></div>
+        </div>
+    </div>
+</div>
+
+<div class="ui main container">
+    <h1 class="ui header">
+        <i class="shield alternate icon"></i>
+        <div class="content">
+            Instance Administration
+            <div class="sub header">Manage users, settings, and system health.</div>
+        </div>
+    </h1>
+
+    <div class="ui top attached tabular menu">
+        <a class="item active" data-tab="dashboard">Dashboard</a>
+        <a class="item" data-tab="users">Users</a>
+        <a class="item" data-tab="settings">Settings</a>
+    </div>
+
+    <div class="ui bottom attached tab segment active" data-tab="dashboard">
+        <h3 class="ui header">Instance Overview</h3>
+        <div class="ui four doubling statistics" id="stats-container">
+            <div class="statistic">
+                <div class="value" id="stats-users">--</div>
+                <div class="label">Total Users</div>
+            </div>
+            <div class="statistic">
+                <div class="value" id="stats-repos">--</div>
+                <div class="label">Repositories</div>
+            </div>
+            <div class="statistic">
+                <div class="value" id="stats-builds">--</div>
+                <div class="label">Total Builds</div>
+            </div>
+            <div class="statistic">
+                <div class="value" id="stats-running">--</div>
+                <div class="label">Running Now</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="ui bottom attached tab segment" data-tab="users">
+        <h3 class="ui header">Manage Users</h3>
+        <table class="ui celled striped table">
+            <thead>
+            <tr>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Admin Status</th>
+                <th>Actions</th>
+            </tr>
+            </thead>
+            <tbody id="user-list">
+            <!-- user list from /api/admin/users will be injected here -->
+            <tr>
+                <td colspan="4">
+                    <div class="ui active centered inline loader"></div>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="ui bottom attached tab segment" data-tab="settings">
+        <h3 class="ui header">Global Settings</h3>
+        <form class="ui form">
+            <div class="field">
+                <div class="ui checkbox">
+                    <input id="setting-allow-registration" name="allow-registration" type="checkbox">
+                    <label>Allow new user registrations</label>
+                </div>
+                <div class="ui basic label">If unchecked, only admins can create new users.</div>
+            </div>
+            <div class="field">
+                <label>Default resource limits for jobs</label>
+                <div class="two fields">
+                    <div class="field">
+                        <input name="default-cpu" placeholder="e.g., 1024 (1 CPU core)" type="text">
+                    </div>
+                    <div class="field">
+                        <input name="default-memory" placeholder="e.g., 2048 (2 GB RAM)" type="text">
+                    </div>
+                </div>
+            </div>
+            <button class="ui green button" type="submit">Save Settings</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('.menu .item').tab();
+        $('.ui.checkbox').checkbox();
+    });
+
+    async function loadStats() {
+        // TODO: fetch from /api/admin/stats
+        const stats = {users: 12, repos: 45, builds: 1204, running: 2}; // mock data
+        document.getElementById('stats-users').textContent = stats.users;
+        document.getElementById('stats-repos').textContent = stats.repos;
+        document.getElementById('stats-builds').textContent = stats.builds;
+        document.getElementById('stats-running').textContent = stats.running;
+    }
+
+    // load the list of users
+    async function loadUsers() {
+        const userList = document.getElementById('user-list');
+        try {
+            // TODO: fetch from /api/admin/users
+            const users = [ // mock data
+                {id: 1, username: 'admin', email: 'admin@example.com', is_admin: true},
+                {id: 2, username: 'dev1', email: 'dev1@example.com', is_admin: false},
+                {id: 3, username: 'dev2', email: 'dev2@example.com', is_admin: false},
+            ];
+
+            userList.innerHTML = users.map(user => `
+                <tr>
+                    <td>
+                        <h4 class="ui image header">
+                          <img src="https://i.pravatar.cc/40?u=${user.id}" class="ui mini rounded image">
+                          <div class="content">${user.username}</div>
+                        </h4>
+                    </td>
+                    <td>${user.email}</td>
+                    <td>
+                        ${user.is_admin ? '<i class="check circle green icon"></i> Yes' : '<i class="times circle red icon"></i> No'}
+                    </td>
+                    <td>
+                        <button class="ui tiny icon button">
+                            <i class="edit icon"></i>
+                        </button>
+                        <button class="ui tiny red icon button">
+                            <i class="trash icon"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            userList.innerHTML = '<tr><td colspan="4"><div class="ui negative message"><p>Failed to load users.</p></div></td></tr>';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadStats();
+        loadUsers();
+    });
+</script>
+</body>
+</html>

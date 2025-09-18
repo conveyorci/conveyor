@@ -5,33 +5,124 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/conveyorci/conveyor/internal/runner"
 	"github.com/conveyorci/conveyor/internal/shared"
+	"github.com/spf13/pflag"
 )
 
-const serverURL = "http://localhost:8080"
+// Agent holds the configuration and state for a Conveyor agent.
+type Agent struct {
+	serverURL  string
+	token      string // for future authentication with the server
+	httpClient *http.Client
+	executor   *runner.DockerExecutor
+}
 
-// requestJob polls the server for a new job.
-func requestJob() (*shared.JobRequest, error) {
-	resp, err := http.Get(serverURL + "/api/jobs/request")
+// NewAgent creates and configures a new agent.
+func NewAgent(serverURL, token string) (*Agent, error) {
+	executor, err := runner.NewDockerExecutor()
 	if err != nil {
-		return nil, fmt.Errorf("could not request job: %w", err)
+		return nil, fmt.Errorf("could not create docker executor: %w", err)
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
 
+	return &Agent{
+		serverURL: serverURL,
+		token:     token,
+		httpClient: &http.Client{
+			Timeout: 15 * time.Second, // add a timeout to HTTP requests
+		},
+		executor: executor,
+	}, nil
+}
+
+// Run starts the agent's main polling loop.
+func (a *Agent) Run(ctx context.Context) {
+	log.Println("Starting agent loop...")
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("Shutting down agent...")
+			return
+		case <-ticker.C:
+			log.Println("Polling for a new job...")
+			jobReq, err := a.requestJob()
+			if err != nil {
+				log.Printf("Error requesting job: %v", err)
+				// TODO: Implement smarter backoff later if needed
+				time.Sleep(10 * time.Second)
+				continue
+			}
+
+			if jobReq == nil {
+				continue // No job available, wait for next tick
+			}
+
+			a.processJob(jobReq)
 		}
-	}(resp.Body)
+	}
+}
+
+// processJob handles the full lifecycle of a single job.
+func (a *Agent) processJob(jobReq *shared.JobRequest) {
+	log.Printf("Picked up job %s for repo %s", jobReq.ID, jobReq.RepoName)
+
+	if err := a.updateJobStatus(jobReq.ID, shared.JobStatusUpdate{Status: shared.StatusRunning}); err != nil {
+		log.Printf("ERROR: Failed to update job status to 'running' for job %s: %v", jobReq.ID, err)
+		return
+	}
+
+	// TODO: make real-time logs and then via `logWriter` could be a WebSocket connection.
+	logWriter := os.Stdout
+
+	workspace, err := os.Getwd()
+	if err != nil {
+		log.Printf("FATAL: Could not get working directory: %v", err)
+		a.updateJobStatus(jobReq.ID, shared.JobStatusUpdate{
+			Status: shared.StatusFailed,
+			Error:  "Agent failed to get working directory",
+		})
+		return
+	}
+
+	err = a.executor.Execute(context.Background(), jobReq.Job, workspace, logWriter)
+
+	if err != nil {
+		log.Printf("Job %s failed: %v", jobReq.ID, err)
+		a.updateJobStatus(jobReq.ID, shared.JobStatusUpdate{
+			Status: shared.StatusFailed,
+			Error:  err.Error(),
+		})
+	} else {
+		log.Printf("Job %s completed successfully", jobReq.ID)
+		a.updateJobStatus(jobReq.ID, shared.JobStatusUpdate{Status: shared.StatusSuccess})
+	}
+}
+
+func (a *Agent) requestJob() (*shared.JobRequest, error) {
+	req, err := http.NewRequest(http.MethodGet, a.serverURL+"/api/jobs/request", nil)
+	if err != nil {
+		return nil, fmt.Errorf("could not create request: %w", err)
+	}
+	// TODO: Add token to header: req.Header.Set("Authorization", "Bearer "+a.token)
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("could not request job from server: %w", err)
+	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNoContent {
-		return nil, nil // No job available
+		return nil, nil
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("server returned non-200 status: %s", resp.Status)
@@ -41,33 +132,26 @@ func requestJob() (*shared.JobRequest, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&jobReq); err != nil {
 		return nil, fmt.Errorf("could not decode job request: %w", err)
 	}
-
 	return &jobReq, nil
 }
 
-// updateJobStatus sends a status update back to the server.
-func updateJobStatus(jobID string, update shared.JobStatusUpdate) error {
+func (a *Agent) updateJobStatus(jobID string, update shared.JobStatusUpdate) error {
 	data, err := json.Marshal(update)
 	if err != nil {
-		return fmt.Errorf("could not marshal status update: %w", err)
+		return err
 	}
-
-	req, err := http.NewRequest(http.MethodPost, serverURL+"/api/jobs/update/"+jobID, bytes.NewBuffer(data))
+	req, err := http.NewRequest(http.MethodPost, a.serverURL+"/api/jobs/update/"+jobID, bytes.NewBuffer(data))
 	if err != nil {
-		return fmt.Errorf("could not create update request: %w", err)
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	// TODO: Add token to header
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := a.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("could not send status update: %w", err)
+		return err
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-
-		}
-	}(resp.Body)
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("server returned non-200 status for update: %s", resp.Status)
@@ -76,62 +160,31 @@ func updateJobStatus(jobID string, update shared.JobStatusUpdate) error {
 }
 
 func main() {
-	log.Println("Starting Conveyor Agent...")
+	serverURL := pflag.String("server-url", "http://localhost:8080", "The URL of the Conveyor server.")
+	token := pflag.String("token", "", "The agent registration token.")
+	pflag.Parse()
 
-	dockerExec, err := runner.NewDockerExecutor()
+	if *token == "" {
+		log.Println("WARN: No agent token provided. This will be required in a future version.")
+	}
+
+	log.Printf("Starting Conveyor Agent, connecting to server at %s", *serverURL)
+
+	agent, err := NewAgent(*serverURL, *token)
 	if err != nil {
-		log.Fatalf("Could not create docker executor: %v", err)
+		log.Fatalf("Failed to create agent: %v", err)
 	}
 
-	// The main polling loop
-	for {
-		log.Println("Polling for a new job...")
-		jobReq, err := requestJob()
-		if err != nil {
-			log.Printf("Error requesting job: %v. Retrying in 10s.", err)
-			time.Sleep(10 * time.Second)
-			continue
-		}
+	ctx, cancel := context.WithCancel(context.Background())
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-		if jobReq == nil {
-			// No job available, wait before polling again
-			time.Sleep(5 * time.Second)
-			continue
-		}
+	go func() {
+		<-sigChan
+		log.Println("Shutdown signal received, stopping agent...")
+		cancel()
+	}()
 
-		log.Printf("Picked up job %s", jobReq.ID)
-
-		// Update server that we are running the job
-		err1 := updateJobStatus(jobReq.ID, shared.JobStatusUpdate{Status: shared.StatusRunning})
-		if err1 != nil {
-			return
-		}
-
-		// Get current directory for workspace mounting
-		workspace, err := os.Getwd()
-		if err != nil {
-			log.Fatalf("Could not get working directory: %v", err)
-		}
-
-		// EXECUTE THE JOB
-		err = dockerExec.Execute(context.Background(), jobReq.Job, workspace)
-
-		// Report the final status
-		if err != nil {
-			log.Printf("Job %s failed: %v", jobReq.ID, err)
-			err := updateJobStatus(jobReq.ID, shared.JobStatusUpdate{
-				Status: shared.StatusFailed,
-				Error:  err.Error(),
-			})
-			if err != nil {
-				return
-			}
-		} else {
-			log.Printf("Job %s completed successfully", jobReq.ID)
-			err := updateJobStatus(jobReq.ID, shared.JobStatusUpdate{Status: shared.StatusSuccess})
-			if err != nil {
-				return
-			}
-		}
-	}
+	agent.Run(ctx)
+	log.Println("Agent has shut down.")
 }

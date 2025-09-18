@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 
 	"github.com/conveyorci/conveyor/internal/pipeline"
-	_ "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/strslice"
@@ -16,7 +14,6 @@ import (
 	"github.com/docker/docker/pkg/stdcopy"
 )
 
-// GvisorRuntimeName is the name of the runtime configured in /etc/docker/daemon.json
 const GvisorRuntimeName = "runsc"
 
 // DockerExecutor implements the Executor interface for Docker.
@@ -33,25 +30,19 @@ func NewDockerExecutor() (*DockerExecutor, error) {
 	return &DockerExecutor{client: cli}, nil
 }
 
-// Execute runs a full job, with multiple commands, inside a single gVisor-sandboxed container.
-func (e *DockerExecutor) Execute(ctx context.Context, job pipeline.Job, workspace string) error {
-	// 1. Pull the image
-	log.Printf("Pulling image: %s", job.Image)
+// Execute runs a full job, with multiple commands, inside a single container.
+func (e *DockerExecutor) Execute(ctx context.Context, job pipeline.Job, workspace string, logWriter io.Writer) error {
+	_, err := fmt.Fprintf(logWriter, "--- Pulling image: %s ---\n", job.Image)
+	if err != nil {
+		return err
+	}
 	pullReader, err := e.client.ImagePull(ctx, job.Image, image.PullOptions{})
 	if err != nil {
 		return fmt.Errorf("could not pull image '%s': %w", job.Image, err)
 	}
-	defer func(pullReader io.ReadCloser) {
-		err := pullReader.Close()
-		if err != nil {
-			log.Printf("could not close pull reader: %v", err)
-		}
-	}(pullReader)
-	if _, err := io.Copy(io.Discard, pullReader); err != nil {
-		log.Printf("WARN: could not fully read image pull progress: %v", err)
-	}
+	defer pullReader.Close()
+	io.Copy(io.Discard, pullReader)
 
-	// 2. Create the container
 	log.Printf("Creating container with mandatory '%s' runtime", GvisorRuntimeName)
 	resp, err := e.client.ContainerCreate(ctx, &container.Config{
 		Image:      job.Image,
@@ -65,7 +56,6 @@ func (e *DockerExecutor) Execute(ctx context.Context, job pipeline.Job, workspac
 		return fmt.Errorf("could not create container: %w", err)
 	}
 
-	// Ensure cleanup
 	defer func() {
 		log.Printf("Stopping and removing container %s", resp.ID[:12])
 		if err := e.client.ContainerStop(ctx, resp.ID, container.StopOptions{}); err != nil {
@@ -76,16 +66,13 @@ func (e *DockerExecutor) Execute(ctx context.Context, job pipeline.Job, workspac
 		}
 	}()
 
-	// 3. Start the container
 	if err := e.client.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		return fmt.Errorf("could not start container %s: %w", resp.ID, err)
 	}
 
-	// 4. Execute each command
 	for _, cmdStr := range job.Commands {
-		log.Printf("==> Executing: %s", cmdStr)
+		fmt.Fprintf(logWriter, "\n\n$ %s\n", cmdStr)
 
-		// Exec create
 		execIDResp, err := e.client.ContainerExecCreate(ctx, resp.ID, container.ExecOptions{
 			Cmd:          strslice.StrSlice{"sh", "-c", cmdStr},
 			AttachStdout: true,
@@ -96,20 +83,22 @@ func (e *DockerExecutor) Execute(ctx context.Context, job pipeline.Job, workspac
 			return fmt.Errorf("failed to create exec for command '%s': %w", cmdStr, err)
 		}
 
-		// Exec attach
 		hijackedResp, err := e.client.ContainerExecAttach(ctx, execIDResp.ID, container.ExecStartOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to attach to exec for command '%s': %w", cmdStr, err)
 		}
 
-		func() {
+		err = func() error {
 			defer hijackedResp.Close()
-			if _, err := stdcopy.StdCopy(os.Stdout, os.Stderr, hijackedResp.Reader); err != nil {
-				log.Printf("failed to read exec output for command '%s': %v", cmdStr, err)
+			if _, err := stdcopy.StdCopy(logWriter, logWriter, hijackedResp.Reader); err != nil {
+				return fmt.Errorf("failed to read exec output for command '%s': %w", cmdStr, err)
 			}
+			return nil
 		}()
+		if err != nil {
+			return err
+		}
 
-		// Inspect exit code
 		inspectResp, err := e.client.ContainerExecInspect(ctx, execIDResp.ID)
 		if err != nil {
 			return fmt.Errorf("failed to inspect exec for command '%s': %w", cmdStr, err)

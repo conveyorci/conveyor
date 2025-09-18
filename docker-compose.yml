@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  server:
+    # The 'image' key tells Compose what to name the image it builds.
+    # It uses variable substitution: ${VARIABLE:-default_value}
+    image: ${DOCKER_REPO:-conveyor}/conveyor-server:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.yml:/home/conveyor/config.yml:ro
+      - conveyor-data:/home/conveyor
+    restart: always
+
+  agent:
+    image: ${DOCKER_REPO:-conveyor}/conveyor-agent:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    command: [ "--server-url", "http://server:8080" ] # Use service name for networking
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/app # Note: For production, you might not want to mount the source code
+    depends_on:
+      - server
+    restart: always
+
+volumes:
+  conveyor-data:

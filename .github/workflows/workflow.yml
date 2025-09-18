@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        goos: [linux]
-        goarch: [amd64, arm64]
+        goos: [ linux ]
+        goarch: [ amd64, arm64 ]
 
     env:
       CGO_ENABLED: 1

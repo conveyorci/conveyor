@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF--8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Sign-in - Conveyor CI</title>
+    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.css" rel="stylesheet" type="text/css">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.js"></script>
+    <style>
+        body {
+            background-color: #DADADA;
+        }
+
+        body > .grid {
+            height: 100vh;
+        }
+
+        .column {
+            max-width: 450px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="ui middle aligned center aligned grid">
+    <div class="column">
+        <h2 class="ui green image header">
+            <i class="box icon"></i>
+            <div class="content">
+                Sign-in
+            </div>
+        </h2>
+
+        <form class="ui large form" id="login-form">
+            <div class="ui stacked segment">
+                <div class="field">
+                    <div class="ui left icon input">
+                        <i class="user icon"></i>
+                        <input autocomplete="username" name="username" placeholder="Username" required type="text">
+                    </div>
+                </div>
+                <div class="field">
+                    <div class="ui left icon input">
+                        <i class="lock icon"></i>
+                        <input autocomplete="current-password" name="password" placeholder="Password" required
+                               type="password">
+                    </div>
+                </div>
+                <button class="ui fluid large green submit button" type="submit">Login</button>
+            </div>
+            <div class="ui message" id="form-message" style="display: none;"></div>
+        </form>
+
+
+        <div class="ui message">
+            New to us? <a href="/register.html">Register an account</a>
+        </div>
+
+        <div class="ui warning message">
+            <div class="header">
+                Notice of Self-Hosting
+            </div>
+            <p>This is a self-hosted instance of Conveyor CI. The Conveyor CI development team has no control over this
+                server or its data.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#login-form').form({
+            fields: {
+                // replaced rule 'empty' with 'notEmpty' because it gonna be deprecated soon
+                username: {
+                    identifier: 'username',
+                    rules: [
+                        {
+                            type: 'notEmpty',
+                            prompt: 'Please enter your username'
+                        }
+                    ]
+                },
+                password: {
+                    identifier: 'password',
+                    rules: [
+                        {
+                            type: 'notEmpty',
+                            prompt: 'Please enter your password'
+                        },
+                        {
+                            type: 'minLength[6]',
+                            prompt: 'Your password must be at least 6 characters'
+                        }
+                    ]
+                }
+            },
+            onSuccess: function (event, fields) {
+                event.preventDefault();
+
+                const $form = $(this);
+                const $button = $form.find('button');
+                const $message = $('#form-message');
+
+                $form.addClass('loading');
+                $button.addClass('loading');
+                $message.hide();
+
+                $.ajax({
+                    type: 'POST',
+                    url: '/api/login',
+                    data: $form.serialize(),
+                    success: function () {
+                        window.location.href = '/';
+                    },
+                    error: function (xhr) {
+                        $message.removeClass('success').addClass('error');
+                        $message.text(xhr.responseText || 'An unknown error occurred.');
+                        $message.show();
+                    },
+                    complete: function () {
+                        $form.removeClass('loading');
+                        $button.removeClass('loading');
+                    }
+                });
+            },
+            error: function (xhr) {
+                $message.removeClass('success positive').addClass('error');
+
+                let errorMessage = 'An unknown error occurred. Please try again.';
+                if (xhr.status === 400) { // Bad Request
+                    errorMessage = xhr.responseText; // This is a validation error we *can* show the user.
+                } else if (xhr.status === 401) { // Unauthorized
+                    errorMessage = 'Invalid username or password.';
+                } else if (xhr.status === 429) { // Too Many Requests
+                    errorMessage = 'Too many attempts. Please wait a minute and try again.';
+                }
+
+                $message.text(errorMessage);
+                $message.show();
+            }
+        });
+    });
+</script>
+
+</body>
+</html>

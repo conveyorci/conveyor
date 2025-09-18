@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>User Settings - Conveyor CI</title>
+    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.css" rel="stylesheet" type="text/css">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.js"></script>
+    <style>
+        body {
+            background-color: #F9FAFB;
+        }
+    </style>
+</head>
+<body>
+<header class="ui fixed inverted green menu"></header>
+<div class="ui main container" style="margin-top: 6em;">
+    <div class="ui grid">
+        <div class="four wide column">
+            <div class="ui vertical fluid tabular menu">
+                <a class="item active" data-tab="profile">Profile</a>
+                <a class="item" data-tab="connections">Connections</a>
+                <a class="item" data-tab="agents">Agents</a>
+            </div>
+        </div>
+        <div class="twelve wide stretched column">
+            <div class="ui tab segment active" data-tab="profile">
+                <h3 class="ui header">Profile Settings</h3>
+                <p>Change your username, email, or password.</p>
+                <!-- profile settings form here -->
+            </div>
+            <div class="ui tab segment" data-tab="connections">
+                <h3 class="ui header">Forge Connections</h3>
+                <p>Connect your Conveyor account to GitHub, GitLab, etc.</p>
+                <button class="ui github button"><i class="github icon"></i> Connect with GitHub</button>
+                <!-- this button would link to OAuth flow -->
+            </div>
+            <div class="ui tab segment" data-tab="agents">
+                <h3 class="ui header">Agents</h3>
+                <p>Manage your registered build agents.</p>
+                <!-- agent list and registration token would go here -->
+            </div>
+        </div>
+    </div>
+</div>
+<script src="/js/components/header.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        renderHeader('.ui.fixed.menu');
+        $('.menu .item').tab();
+    });
+</script>
+</body>
+</html>

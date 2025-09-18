@@ -1,0 +1,19 @@
+FROM golang:1.25-alpine AS builder
+WORKDIR /app
+RUN apk add --no-cache gcc musl-dev git
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o /conveyor-server ./cmd/conveyor-server
+
+FROM alpine:latest
+RUN apk add --no-cache git sqlite-libs
+RUN addgroup -S conveyor && adduser -S conveyor -G conveyor
+USER conveyor
+WORKDIR /home/conveyor
+COPY --from=builder /conveyor-server .
+EXPOSE 8080
+ENTRYPOINT ["./conveyor-server", "-config", "config.yml"]

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Organization Settings - Conveyor CI</title>
+    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.css" rel="stylesheet" type="text/css">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.js"></script>
+    <style>body {
+        background-color: #F9FAFB;
+    }
+
+    .main.container {
+        margin-top: 6em;
+    }</style>
+</head>
+<body>
+<script src="/js/components/header.js"></script>
+
+<!-- TODO: fix everything here -->
+<div class="ui main container">
+    <h1 class="ui header" id="org-name-header">Organization Settings</h1>
+    <div class="ui grid">
+        <div class="four wide column">
+            <div class="ui vertical fluid tabular menu">
+                <a class="item active" data-tab="members">Members</a>
+                <a class="item" data-tab="repos">Repositories</a>
+                <a class="item" data-tab="secrets">Secrets</a>
+            </div>
+        </div>
+        <div class="twelve wide stretched column">
+            <div class="ui tab segment active" data-tab="members">
+                <h3 class="ui header">Manage Members</h3>
+                <p>Invite new members and manage roles.</p>
+                <!-- Member list and invite form would go here -->
+            </div>
+            <div class="ui tab segment" data-tab="repos">
+                <h3 class="ui header">Repositories</h3>
+                <p>Enable or disable repositories for this organization.</p>
+                <!-- A list of repos from the user's forge connection would go here -->
+            </div>
+            <div class="ui tab segment" data-tab="secrets">
+                <h3 class="ui header">Organization Secrets</h3>
+                <p>Secrets here will be available to all repositories in this organization.</p>
+                <!-- A form to add/edit secrets would go here -->
+            </div>
+        </div>
+    </div>
+</div>
+<script src="/js/components/header.js"></script>
+<script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const orgId = urlParams.get('id');
+
+    async function loadOrgDetails() {
+        // fetch org details from an API endpoint like /api/orgs/{orgId}
+        const org = {name: "My Awesome Company"}; // mock data
+        document.getElementById('org-name-header').textContent = `Settings for ${org.name}`;
+
+        // load members, repos, secrets for the other tabs...
+    }
+
+    $(document).ready(function () {
+        renderHeader('.ui.fixed.menu');
+        $('.menu .item').tab();
+        loadOrgDetails();
+    });
+</script>
+</body>
+</html>
