@@ -12,10 +12,14 @@
     <img alt="Endpoint Badge" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fghloc.vercel.app%2Fapi%2Fconveyorci%2Fconveyor%2Fbadge&color=blue">
 </div>
 
-In a nutshell, Conveyor is an open-source automation (CI) server for your projects and team. Built with Go, so you can automate virtually everything, from Go app builds to Kubernetes and Docker, or webhook send, so machines spend time instead of humans.
+In a nutshell, Conveyor is an open-source automation (CI) server for your projects and team. Built with Go, so you can
+automate virtually everything, from Go app builds to Kubernetes and Docker, or webhook send, so machines spend time
+instead of humans.
 
 ## Usage
-Use Conveyor to automate your development workflow, so you and your team can focus on something more. Conveyor is used for:
+
+Use Conveyor to automate your development workflow, so you and your team can focus on something more. Conveyor is used
+for:
 
 - Building projects
 - Running tests to find bugs and other issues

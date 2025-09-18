@@ -5,15 +5,21 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/google/go-github/v74/github"
 	"github.com/google/uuid"
 	"github.com/gorilla/sessions"
+	"github.com/patrickmn/go-cache"
+	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v3"
 
 	"github.com/conveyorci/conveyor/internal/config"
@@ -21,6 +27,11 @@ import (
 	"github.com/conveyorci/conveyor/internal/serverui"
 	"github.com/conveyorci/conveyor/internal/shared"
 	"github.com/conveyorci/conveyor/internal/store"
+)
+
+var (
+	usernameRegex = regexp.MustCompile("^[a-zA-Z0-9_-]{3,20}$")
+	emailRegex    = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 )
 
 // Server holds dependencies like the database store.
@@ -34,7 +45,61 @@ type Server struct {
 func NewServer(store *store.Store, cfg *config.Config) *Server {
 	authKey := []byte(cfg.Security.SessionKey)
 	cookieStore := sessions.NewCookieStore(authKey)
+	cookieStore.Options = &sessions.Options{
+		Path:     "/",
+		MaxAge:   86400 * 7, // 7 days
+		HttpOnly: true,
+		Secure:   false, // TODO: set later to true for using HTTPS by default, or no
+	}
 	return &Server{store: store, cookieStore: cookieStore, config: cfg}
+}
+
+// IPRateLimiter holds a rate limiter for each IP address.
+type IPRateLimiter struct {
+	ips *cache.Cache
+	mu  sync.Mutex
+}
+
+// NewIPRateLimiter creates a new rate limiter.
+func NewIPRateLimiter(r rate.Limit, b int) *IPRateLimiter {
+	return &IPRateLimiter{
+		// Create a cache that cleans up expired entries every 10 minutes.
+		ips: cache.New(10*time.Minute, 10*time.Minute),
+	}
+}
+
+// getLimiter returns the rate limiter for a given IP address.
+func (i *IPRateLimiter) getLimiter(ip string) *rate.Limiter {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	limiter, found := i.ips.Get(ip)
+	if !found {
+		// Allow 5 events per minute.
+		limiter = rate.NewLimiter(rate.Every(1*time.Minute), 5)
+		i.ips.Set(ip, limiter, cache.DefaultExpiration)
+	}
+	return limiter.(*rate.Limiter)
+}
+
+// rateLimitMiddleware is a middleware that applies rate limiting.
+func (s *Server) rateLimitMiddleware(next http.Handler) http.Handler {
+	limiter := NewIPRateLimiter(1, 3) // Placeholder values
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			log.Printf("could not get ip: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		if !limiter.getLimiter(ip).Allow() {
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // getUsernameFromSession gets username from session.
@@ -57,8 +122,20 @@ func (s *Server) registrationHandler(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	email := r.FormValue("email")
 
+	if !usernameRegex.MatchString(username) {
+		http.Error(w, "Invalid username format.", http.StatusBadRequest)
+		return
+	}
+	if !emailRegex.MatchString(email) {
+		http.Error(w, "Invalid email format.", http.StatusBadRequest)
+		return
+	}
+	if len(password) < 6 {
+		http.Error(w, "Password must be at least 6 characters.", http.StatusBadRequest)
+		return
+	}
 	if err := s.store.CreateUser(username, password, email); err != nil {
-		http.Error(w, "Registration failed, username or email may already be taken.", http.StatusInternalServerError)
+		http.Error(w, "Registration failed: username or email may already be in use.", http.StatusBadRequest)
 		log.Printf("ERROR: failed to create user: %v", err)
 		return
 	}
@@ -70,6 +147,11 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
+	if username == "" || password == "" {
+		http.Error(w, "Username and password are required.", http.StatusBadRequest)
+		return
+	}
+
 	ok, err := s.store.AuthenticateUser(username, password)
 	if err != nil || !ok {
 		http.Error(w, "Invalid username or password", http.StatusUnauthorized)
@@ -80,7 +162,8 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 	session.Values["authenticated"] = true
 	session.Values["username"] = username
 	session.Save(r, w)
-	http.Redirect(w, r, "/", http.StatusFound)
+
+	http.Redirect(w, r, "/repos/index.html", http.StatusFound)
 }
 
 func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +294,7 @@ func (s *Server) userProfileHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// do not send the password hash to the client
-	user.PasswordHash = ""
+	// user.PasswordHash = ""
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
@@ -435,14 +518,14 @@ func (s *Server) githubWebhookHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	configPath := flag.String("config", "config.yml", "Path to the configuration file")
+	configPath := flag.String("config", "", "Path to the configuration file (optional)")
 	flag.Parse()
 
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to load configuration: %v", err)
 	}
-	log.Printf("Configuration loaded from %s", *configPath)
+	log.Printf("Configuration loaded from %s", cfg.ResolvedPath)
 
 	db, err := store.NewStore(cfg.Server.Database)
 	if err != nil {
@@ -451,31 +534,36 @@ func main() {
 
 	server := NewServer(db, cfg)
 	mux := http.NewServeMux()
+	uiHandler := serverui.New()
 
 	mux.HandleFunc("/api/register", server.registrationHandler)
 	mux.HandleFunc("/api/login", server.loginHandler)
-	mux.HandleFunc("/api/logout", server.logoutHandler)
 	mux.HandleFunc("/api/badges/", server.badgeHandler)
 
-	uiHandler := serverui.New()
 	mux.Handle("/login.html", uiHandler)
 	mux.Handle("/register.html", uiHandler)
+	mux.Handle("/404.html", uiHandler)
 
 	mux.HandleFunc("/api/jobs/request", server.requestJobHandler)
 	mux.HandleFunc("/api/jobs/update/", server.updateJobHandler)
 	mux.HandleFunc("/webhooks/github", server.githubWebhookHandler)
 
-	mux.Handle("/api/jobs", server.authMiddleware(http.HandlerFunc(server.listJobsHandler)))
-	mux.Handle("/api/repositories", server.authMiddleware(http.HandlerFunc(server.listReposHandler)))
-	mux.Handle("/api/pipelines/", server.authMiddleware(http.HandlerFunc(server.pipelineDetailHandler)))
-	mux.Handle("/api/logs/", server.authMiddleware(http.HandlerFunc(server.logsHandler)))
-	mux.Handle("/api/user/profile", server.authMiddleware(http.HandlerFunc(server.userProfileHandler)))
-	mux.Handle("/api/user/orgs", server.authMiddleware(http.HandlerFunc(server.listUserOrgsHandler)))
-	mux.Handle("/api/orgs", server.authMiddleware(http.HandlerFunc(server.createOrgHandler)))
+	privateMux := http.NewServeMux()
 
-	mux.Handle("/api/admin/users", server.authMiddleware(server.adminOnlyMiddleware(http.HandlerFunc(server.adminListUsersHandler))))
+	// Private API Routes
+	privateMux.HandleFunc("/api/logout", server.logoutHandler)
+	privateMux.HandleFunc("/api/jobs", server.listJobsHandler)
+	privateMux.HandleFunc("/api/repositories", server.listReposHandler)
+	privateMux.HandleFunc("/api/pipelines/", server.pipelineDetailHandler)
+	privateMux.HandleFunc("/api/logs/", server.logsHandler)
+	privateMux.HandleFunc("/api/user/profile", server.userProfileHandler)
+	privateMux.HandleFunc("/api/user/orgs", server.listUserOrgsHandler)
+	privateMux.HandleFunc("/api/orgs", server.createOrgHandler)
+	privateMux.Handle("/api/admin/users", server.adminOnlyMiddleware(http.HandlerFunc(server.adminListUsersHandler)))
 
-	mux.Handle("/", server.authMiddleware(uiHandler))
+	privateMux.Handle("/", uiHandler)
+
+	mux.Handle("/", server.authMiddleware(privateMux))
 
 	port := cfg.Server.Port
 	log.Printf("Starting Conveyor Server on port %s", port)
