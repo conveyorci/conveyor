@@ -1,38 +1,29 @@
 version: '3.8'
 
 services:
-  # The Conveyor Server service
   server:
+    # The 'image' key tells Compose what to name the image it builds.
+    # It uses variable substitution: ${VARIABLE:-default_value}
+    image: ${DOCKER_REPO:-conveyor}/conveyor-server:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile.server
     ports:
-      - "8080:8080" # Map host port 8080 to container port 8080
+      - "8080:8080"
     volumes:
-      # Mount a local config.yml into the container.
-      # IMPORTANT: You must create this file first!
       - ./config.yml:/home/conveyor/config.yml:ro
-      # Create a persistent volume for the SQLite database
       - conveyor-data:/home/conveyor
     restart: always
 
-  # The Conveyor Agent service
   agent:
+    image: ${DOCKER_REPO:-conveyor}/conveyor-agent:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile.agent
-    # The command to run, overriding the Dockerfile's ENTRYPOINT.
-    # 'host.docker.internal' is a special DNS name that resolves to the host machine
-    # from inside a Docker container on Docker Desktop. This lets the agent
-    # find the server.
-    command: ["--server-url", "http://host.docker.internal:8080"]
+    command: [ "--server-url", "http://server:8080" ] # Use service name for networking
     volumes:
-      # This is crucial: mount the host's Docker socket into the agent container.
-      # This allows the agent container to create other Docker containers on the host.
       - /var/run/docker.sock:/var/run/docker.sock
-      # Mount the current project directory as the workspace.
-      # This is where the agent will clone repos into.
-      - .:/app
+      - .:/app # Note: For production, you might not want to mount the source code
     depends_on:
       - server
     restart: always
