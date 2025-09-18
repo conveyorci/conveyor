@@ -2,37 +2,22 @@
 <html>
 <head>
     <title>Repositories - Conveyor CI</title>
-    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.3/dist/semantic.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.3/dist/semantic.min.css" rel="stylesheet" type="text/css">
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.3/dist/semantic.min.js"></script>
-    <style>body { background-color: #F9FAFB; }</style>
+    <style>body {
+        background-color: #F9FAFB;
+    }</style>
 </head>
 <body>
-<div class="ui fixed inverted green menu">
-    <div class="ui container">
-        <div class="header item">
-            <i class="box icon"></i>
-            Conveyor
-        </div>
-        <a href="/repos/" class="active item">Repositories</a>
-        <a href="#" class="item">Docs</a>
-        <a class="item" href="#">API</a>
-        <div class="right menu">
-            <a class="item"><i class="cog icon"></i></a>
-            <div class="item">
-                <img class="ui avatar image" src="https://i.pravatar.cc/40">
-            </div>
-        </div>
-    </div>
-</div>
-
+<header class="ui fixed inverted green menu"></header>
 <div class="ui main container" style="margin-top: 6em;">
     <h1 class="ui header">Repositories</h1>
     <div class="ui relaxed divided list" id="repo-list">
         <!-- repo items will be injected here -->
     </div>
 </div>
-
+<script src="/js/components/header.js"></script>
 <script>
     async function fetchRepos() {
         const list = document.getElementById('repo-list');
@@ -54,12 +39,16 @@
                     </div>
                 </a>
             `).join('');
-        } catch(error) {
+        } catch (error) {
             list.innerHTML = '<div class="ui negative message"><p>Failed to load repositories.</p></div>';
             console.error("API Error:", error);
         }
     }
-    fetchRepos();
+
+    document.addEventListener('DOMContentLoaded', () => {
+        renderHeader('.ui.fixed.menu');
+        fetchRepos();
+    });
 </script>
 </body>
 </html>

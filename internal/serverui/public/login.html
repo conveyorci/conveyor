@@ -2,18 +2,20 @@
 <html lang="en">
 <head>
     <meta charset="UTF--8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>Sign-in - Conveyor CI</title>
-    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.css" rel="stylesheet" type="text/css">
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.js"></script>
     <style>
         body {
             background-color: #DADADA;
         }
+
         body > .grid {
             height: 100vh;
         }
+
         .column {
             max-width: 450px;
         }
@@ -35,13 +37,14 @@
                 <div class="field">
                     <div class="ui left icon input">
                         <i class="user icon"></i>
-                        <input type="text" name="username" placeholder="Username" required>
+                        <input autocomplete="username" name="username" placeholder="Username" required type="text">
                     </div>
                 </div>
                 <div class="field">
                     <div class="ui left icon input">
                         <i class="lock icon"></i>
-                        <input type="password" name="password" placeholder="Password" required>
+                        <input autocomplete="current-password" name="password" placeholder="Password" required
+                               type="password">
                     </div>
                 </div>
                 <button class="ui fluid large green submit button" type="submit">Login</button>
@@ -58,13 +61,14 @@
             <div class="header">
                 Notice of Self-Hosting
             </div>
-            <p>This is a self-hosted instance of Conveyor CI. The Conveyor CI development team has no control over this server or its data.</p>
+            <p>This is a self-hosted instance of Conveyor CI. The Conveyor CI development team has no control over this
+                server or its data.</p>
         </div>
     </div>
 </div>
 
 <script>
-    $(document).ready(function() {
+    $(document).ready(function () {
         $('#login-form').form({
             fields: {
                 // replaced rule 'empty' with 'notEmpty' because it gonna be deprecated soon
@@ -91,7 +95,7 @@
                     ]
                 }
             },
-            onSuccess: function(event, fields) {
+            onSuccess: function (event, fields) {
                 event.preventDefault();
 
                 const $form = $(this);
@@ -106,19 +110,34 @@
                     type: 'POST',
                     url: '/api/login',
                     data: $form.serialize(),
-                    success: function() {
+                    success: function () {
                         window.location.href = '/';
                     },
-                    error: function(xhr) {
+                    error: function (xhr) {
                         $message.removeClass('success').addClass('error');
                         $message.text(xhr.responseText || 'An unknown error occurred.');
                         $message.show();
                     },
-                    complete: function() {
+                    complete: function () {
                         $form.removeClass('loading');
                         $button.removeClass('loading');
                     }
                 });
+            },
+            error: function (xhr) {
+                $message.removeClass('success positive').addClass('error');
+
+                let errorMessage = 'An unknown error occurred. Please try again.';
+                if (xhr.status === 400) { // Bad Request
+                    errorMessage = xhr.responseText; // This is a validation error we *can* show the user.
+                } else if (xhr.status === 401) { // Unauthorized
+                    errorMessage = 'Invalid username or password.';
+                } else if (xhr.status === 429) { // Too Many Requests
+                    errorMessage = 'Too many attempts. Please wait a minute and try again.';
+                }
+
+                $message.text(errorMessage);
+                $message.show();
             }
         });
     });

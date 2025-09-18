@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>User Settings - Conveyor CI</title>
-    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.3/dist/semantic.min.css" rel="stylesheet" type="text/css">
+    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.css" rel="stylesheet" type="text/css">
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.3/dist/semantic.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.js"></script>
     <style>
         body {
             background-color: #F9FAFB;
@@ -14,24 +14,7 @@
     </style>
 </head>
 <body>
-<div class="ui fixed inverted green menu">
-    <div class="ui container">
-        <div class="header item">
-            <i class="box icon"></i>
-            Conveyor
-        </div>
-        <a class="active item" href="/repos/">Repositories</a>
-        <a class="item" href="#">Docs</a>
-        <a class="item" href="#">API</a>
-        <div class="right menu">
-            <a class="item"><i class="cog icon"></i></a>
-            <div class="item">
-                <img class="ui avatar image" src="https://i.pravatar.cc/40">
-            </div>
-        </div>
-    </div>
-</div>
-
+<header class="ui fixed inverted green menu"></header>
 <div class="ui main container" style="margin-top: 6em;">
     <div class="ui grid">
         <div class="four wide column">
@@ -61,8 +44,12 @@
         </div>
     </div>
 </div>
+<script src="/js/components/header.js"></script>
 <script>
-    $('.menu .item').tab();
+    document.addEventListener('DOMContentLoaded', () => {
+        renderHeader('.ui.fixed.menu');
+        $('.menu .item').tab();
+    });
 </script>
 </body>
 </html>
