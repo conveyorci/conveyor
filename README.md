@@ -1,4 +1,4 @@
-<h1 align="center">Conveyor</h1>
+<h1 align="center">Conveyor</h1> 
 <p align="center">An open-source automation (CI) server for your projects and team.</p>
 
 <div align="center">

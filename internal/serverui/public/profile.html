@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>User Profile - Conveyor CI</title>
+    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.3/dist/semantic.min.css" rel="stylesheet" type="text/css">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.3/dist/semantic.min.js"></script>
+    <style>body {
+        background-color: #F9FAFB;
+    }</style>
+</head>
+<body>
+<div class="ui fixed inverted green menu">
+    <div class="ui container">
+        <div class="header item">
+            <i class="box icon"></i>
+            Conveyor
+        </div>
+        <a class="active item" href="/repos/">Repositories</a>
+        <a class="item" href="#">Docs</a>
+        <a class="item" href="#">API</a>
+        <div class="right menu">
+            <a class="item"><i class="cog icon"></i></a>
+            <div class="item">
+                <img class="ui avatar image" src="https://i.pravatar.cc/40">
+            </div>
+        </div>
+    </div>
+</div>
+<div class="ui main container" style="margin-top: 6em;">
+    <div class="ui grid">
+        <div class="four wide column">
+            <div class="ui card">
+                <div class="image">
+                    <img id="user-avatar" src="https://i.pravatar.cc/300">
+                </div>
+                <div class="content">
+                    <a class="header" id="user-username">Username</a>
+                    <div class="meta">
+                        <span class="date" id="user-created-at">Joined in...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="twelve wide column">
+            <h2 class="ui header">My Organizations</h2>
+            <div class="ui relaxed divided list" id="org-list">
+                <!-- Orgs will be injected here -->
+            </div>
+            <a class="ui green button" href="/orgs/new.html">
+                <i class="plus icon"></i>
+                Create New Organization
+            </a>
+        </div>
+    </div>
+</div>
+<script>
+    async function loadProfile() {
+        const profile = await fetch('/api/user/profile').then(res => res.json());
+        document.getElementById('user-username').textContent = profile.username;
+        document.getElementById('user-created-at').textContent = `Joined on ${new Date(profile.created_at).toLocaleDateString()}`;
+
+        const orgs = await fetch('/api/user/orgs').then(res => res.json());
+        // TODO: render the list of orgs
+    }
+
+    loadProfile();
+</script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Repositories - Conveyor CI</title>
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.3/dist/semantic.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.3/dist/semantic.min.js"></script>
+    <style>body { background-color: #F9FAFB; }</style>
+</head>
+<body>
+<div class="ui fixed inverted green menu">
+    <div class="ui container">
+        <div class="header item">
+            <i class="box icon"></i>
+            Conveyor
+        </div>
+        <a href="/repos/" class="active item">Repositories</a>
+        <a href="#" class="item">Docs</a>
+        <a class="item" href="#">API</a>
+        <div class="right menu">
+            <a class="item"><i class="cog icon"></i></a>
+            <div class="item">
+                <img class="ui avatar image" src="https://i.pravatar.cc/40">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="ui main container" style="margin-top: 6em;">
+    <h1 class="ui header">Repositories</h1>
+    <div class="ui relaxed divided list" id="repo-list">
+        <!-- repo items will be injected here -->
+    </div>
+</div>
+
+<script>
+    async function fetchRepos() {
+        const list = document.getElementById('repo-list');
+        try {
+            const response = await fetch('/api/repositories');
+            const repos = await response.json();
+
+            if (!repos || repos.length === 0) {
+                list.innerHTML = '<div class="ui message"><p>No repositories with builds found.</p></div>';
+                return;
+            }
+
+            list.innerHTML = repos.map(repo => `
+                <a class="item" href="/pipelines/?repo=${repo.full_name}">
+                    <i class="large github middle aligned icon"></i>
+                    <div class="content">
+                        <div class="header">${repo.full_name}</div>
+                        <div class="description">Last build was successful 2 hours ago.</div>
+                    </div>
+                </a>
+            `).join('');
+        } catch(error) {
+            list.innerHTML = '<div class="ui negative message"><p>Failed to load repositories.</p></div>';
+            console.error("API Error:", error);
+        }
+    }
+    fetchRepos();
+</script>
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Conveyor CI Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.css" rel="stylesheet" type="text/css">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.js"></script>
+    <style>
+        body {
+            background-color: #F9FAFB;
+        }
+
+        .main.container {
+            margin-top: 6em;
+        }
+
+        .status-bar {
+            width: 5px !important;
+            padding: 0 !important;
+        }
+
+        .job-item .content {
+            display: grid;
+            grid-template-columns: 3fr 2fr 2fr;
+            width: 100%;
+            align-items: center;
+        }
+
+        .job-item .meta {
+            color: rgba(0, 0, 0, .6);
+            font-size: 0.9em;
+        }
+
+        .job-item .commit-sha {
+            font-family: monospace;
+        }
+
+        /* Make the side menu sticky */
+        .sticky-column {
+            position: sticky;
+            top: 6em;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Top Menu -->
+<div class="ui fixed inverted green menu">
+    <div class="ui container">
+        <div class="header item">
+            <i class="box icon"></i>
+            Conveyor
+        </div>
+        <a class="item" href="#">Repositories</a>
+        <a class="item" href="#">Docs</a>
+        <a class="item" href="#">API</a>
+        <div class="right menu">
+            <a class="item"><i class="cog icon"></i></a>
+            <div class="item">
+                <img class="ui avatar image" src="https://avatars.githubusercontent.com/u/154914363?v=4">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="ui main container">
+    <h1 class="ui header" id="repo-header">Builds for...</h1>
+    <div class="ui grid">
+        <div class="ten wide column">
+            <div class="ui stacked segment">
+                <div class="ui relaxed divided list" id="build-feed">
+                    <!-- build items will be injected here -->
+                </div>
+            </div>
+        </div>
+        <div class="six wide column">
+            <div class="sticky-column">
+                <div class="ui segment">
+                    <h3 class="ui header">Recent Activity</h3>
+                    <div class="ui relaxed divided list" id="activity-feed"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- mock data, will be removed later --- 
+    const mockJobs = [
+        {
+            id: 'job1',
+            status: 'success',
+            repo_name: 'conveyor-ci/conveyor',
+            commit_message: 'feat: Implement new dashboard UI',
+            commit_sha: 'eff9e6a3e8',
+            commit_ref: 'main',
+            commit_author: 'user1',
+            created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+            duration: '2 min 9 sec'
+        },
+        {
+            id: 'job2',
+            status: 'failed',
+            repo_name: 'conveyor-ci/plugin-docker',
+            commit_message: 'fix: Handle edge case in volume mounting',
+            commit_sha: '2e860db3cc',
+            commit_ref: 'fix-docker-bug',
+            commit_author: 'user2',
+            created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+            duration: '40 sec'
+        },
+        {
+            id: 'job3',
+            status: 'running',
+            repo_name: 'conveyor-ci/conveyor',
+            commit_message: 'chore(deps): Update typescript to v5',
+            commit_sha: 'a1fca1b443',
+            commit_ref: 'dependabot/npm',
+            commit_author: 'dependabot',
+            created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+            duration: 'not started yet'
+        },
+        {
+            id: 'job4',
+            status: 'pending',
+            repo_name: 'conveyor-ci/conveyor',
+            commit_message: 'docs: Update installation guide',
+            commit_sha: 'ec02379b04',
+            commit_ref: 'docs-update',
+            commit_author: 'user1',
+            created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+            duration: 'not started yet'
+        },
+    ];
+
+    const statusMap = {
+        success: {color: 'green', icon: 'check circle outline'},
+        failed: {color: 'red', icon: 'times circle outline'},
+        running: {color: 'blue', icon: 'play circle outline'},
+        pending: {color: 'grey', icon: 'pause circle outline'}
+    };
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const repoName = urlParams.get('repo');
+
+    document.title = `${repoName} - Conveyor CI`;
+    document.getElementById('repo-header').textContent = `Builds for ${repoName}`;
+
+    function createBuildItemHTML(job) {
+        const status = statusMap[job.status] || statusMap.pending;
+        const shortSha = job.commit_sha.substring(0, 8);
+        const friendlyRef = job.commit_ref.replace('refs/heads/', '');
+        const timeAgo = new Date(job.created_at).toLocaleString();
+
+        return `
+            <a class="item job-item" href="/pipelines/view.html?id=${job.id}">
+                <div class="left floated status-bar ${status.color} attached"></div>
+                <i class="large middle aligned icon ${status.icon} ${status.color}"></i>
+                <div class="content">
+                    <div>
+                        <div class="header">${job.commit_message}</div>
+                        <div class="description">${job.repo_name}</div>
+                    </div>
+                    <div class="meta">
+                        <div><i class="fork icon"></i>${friendlyRef}</div>
+                        <div><i class="code branch icon"></i><span class="commit-sha">${shortSha}</span></div>
+                    </div>
+                    <div class="meta">
+                        <div><i class="clock outline icon"></i>${job.duration}</div>
+                        <div><i class="calendar alternate outline icon"></i>${timeAgo}</div>
+                    </div>
+                </div>
+            </a>
+        `;
+    }
+
+    function createActivityItemHTML(job) {
+        const status = statusMap[job.status] || statusMap.pending;
+        return `
+                <div class="item">
+                    <i class="large middle aligned icon ${status.icon} ${status.color}"></i>
+                    <div class="content">
+                        <div class="header">${job.repo_name}</div>
+                        <div class="description">${job.commit_message}</div>
+                    </div>
+                </div>
+            `;
+    }
+
+    async function renderFeeds() {
+        const buildFeed = document.getElementById('build-feed');
+        const activityFeed = document.getElementById('activity-feed');
+
+        try {
+            // TODO: make api call here
+            // const jobs = await fetch('/api/jobs').then(res => res.json());
+            const jobs = mockJobs;
+
+            if (!jobs || jobs.length === 0) {
+                buildFeed.innerHTML = '<div class="ui message"><p>No builds in the queue.</p></div>';
+                activityFeed.innerHTML = '<div class="ui message"><p>No recent activity.</p></div>';
+                return;
+            }
+
+            buildFeed.innerHTML = jobs.map(createBuildItemHTML).join('');
+            activityFeed.innerHTML = jobs.map(createActivityItemHTML).join('');
+        } catch (error) {
+            buildFeed.innerHTML = '<div class="ui negative message"><p>Failed to load build data from the server.</p></div>';
+            console.error("API Error:", error);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        renderFeeds();
+        // setInterval(renderFeeds, 5000);
+    });
+</script>
+</body>
+</html>

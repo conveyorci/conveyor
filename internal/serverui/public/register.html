@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Register - Conveyor CI</title>
+    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.css" rel="stylesheet" type="text/css">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.js"></script>
+    <style>
+        body {
+            background-color: #DADADA;
+        }
+
+        body > .grid {
+            height: 100vh;
+        }
+
+        .column {
+            max-width: 450px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="ui middle aligned center aligned grid">
+    <div class="column">
+        <h2 class="ui green image header">
+            <i class="box icon"></i>
+            <div class="content">
+                Register
+            </div>
+        </h2>
+
+        <form action="/api/register" class="ui large form" method="post">
+            <div class="ui stacked segment">
+                <div class="field">
+                    <div class="ui left icon input">
+                        <i class="user icon"></i>
+                        <input name="username" placeholder="Username" required type="text">
+                    </div>
+                </div>
+                <div class="field">
+                    <div class="ui left icon input">
+                        <i class="envelope icon"></i>
+                        <input name="email" placeholder="E-mail address" required type="email">
+                    </div>
+                </div>
+                <div class="field">
+                    <div class="ui left icon input">
+                        <i class="lock icon"></i>
+                        <input name="password" placeholder="Password (min. 6 characters)" required type="password">
+                    </div>
+                </div>
+                <div class="field">
+                    <div class="ui left icon input">
+                        <i class="lock icon"></i>
+                        <input name="passwordConfirm" placeholder="Confirm Password" required type="password">
+                    </div>
+                </div>
+                <button class="ui fluid large green submit button" type="submit">Register</button>
+            </div>
+
+            <div class="ui error message"></div>
+        </form>
+
+        <div class="ui message">
+            Already have an account? <a href="/login.html">Log In</a>
+        </div>
+
+        <div class="ui warning message">
+            <div class="header">
+                Notice of Self-Hosting
+            </div>
+            <p>This is a self-hosted instance of Conveyor CI. The Conveyor CI development team has no control over this
+                server or its data.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#register-form').form({
+            fields: {
+                username: {
+                    identifier: 'username',
+                    rules: [{type: 'notEmpty', prompt: 'Please enter a username'}]
+                },
+                email: {
+                    identifier: 'email',
+                    rules: [{type: 'email', prompt: 'Please enter a valid e-mail address'}]
+                },
+                password: {
+                    identifier: 'password',
+                    rules: [
+                        {type: 'notEmpty', prompt: 'Please enter a password'},
+                        {type: 'minLength[6]', prompt: 'Your password must be at least {ruleValue} characters'}
+                    ]
+                },
+                passwordConfirm: {
+                    identifier: 'passwordConfirm',
+                    rules: [
+                        {
+                            type: 'match[password]',
+                            prompt: 'Passwords do not match'
+                        }
+                    ]
+                }
+            },
+            onSuccess: function (event, fields) {
+                event.preventDefault();
+
+                const $form = $(this);
+                const $button = $form.find('button');
+                const $message = $('#form-message');
+
+                $form.addClass('loading');
+                $button.addClass('loading');
+                $message.hide();
+
+                $.ajax({
+                    type: 'POST',
+                    url: '/api/register',
+                    data: $form.serialize(),
+                    success: function () {
+                        $message.removeClass('error').addClass('positive');
+                        $message.html('<div class="header">Registration Successful!</div><p>You will be redirected to the login page shortly.</p>');
+                        $message.show();
+                        setTimeout(() => {
+                            window.location.href = '/login.html';
+                        }, 2000);
+                    },
+                    error: function (xhr) {
+                        $message.removeClass('positive').addClass('error');
+                        $message.text(xhr.responseText || 'Registration failed.');
+                        $message.show();
+                    },
+                    complete: function () {
+                        $form.removeClass('loading');
+                        $button.removeClass('loading');
+                    }
+                });
+            }
+        });
+    });
+</script>
+
+</body>
+</html>

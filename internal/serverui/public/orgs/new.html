@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Create Organization - Conveyor CI</title>
+    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.css" rel="stylesheet" type="text/css">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.js"></script>
+    <style>
+        body {
+            background-color: #F9FAFB;
+        }
+
+        .main.container {
+            margin-top: 6em;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="ui fixed inverted green menu">
+        <div class="ui container">
+            <div class="header item">
+                <i class="box icon"></i>
+                Conveyor
+            </div>
+            <a class="item" href="#">Repositories</a>
+            <a class="item" href="#">Docs</a>
+            <a class="item" href="#">API</a>
+            <div class="right menu">
+                <a class="item"><i class="cog icon"></i></a>
+                <div class="item">
+                    <img class="ui avatar image" src="https://avatars.githubusercontent.com/u/154914363?v=4">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="ui main container">
+        <h1 class="ui header">Create a New Organization</h1>
+        <div class="ui segment">
+            <form class="ui form" id="create-org-form">
+                <div class="field">
+                    <label>Organization Name</label>
+                    <input name="name" placeholder="e.g., My Awesome Company" required type="text">
+                </div>
+                <button class="ui green button" type="submit">Create Organization</button>
+                <div class="ui message" id="form-message" style="display: none;"></div>
+            </form>
+        </div>
+    </div>
+    <script>
+        $(document).ready(function () {
+            $('#create-org-form').form({
+                fields: { name: { identifier: 'name', rules: [{ type: 'empty' }] } },
+                onSuccess: function (event, fields) {
+                    event.preventDefault();
+                    const $form = $(this);
+                    // TODO: change this one later
+                    $.ajax({
+                        type: 'POST',
+                        url: '/api/orgs',
+                        contentType: 'application/json',
+                        data: JSON.stringify({ name: fields.name }),
+                        success: function () {
+                            window.location.href = '/profile';
+                        },
+                        error: function (xhr) { /* ... handle error ... */ }
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
