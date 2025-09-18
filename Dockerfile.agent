@@ -1,0 +1,36 @@
+# --- Stage 1: Builder ---
+# Use the official Go image with Alpine Linux
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /app
+
+# Install git, which is needed by the go toolchain
+RUN apk add --no-cache git
+
+# Copy go.mod and go.sum and download dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the entire source code
+COPY . .
+
+# Build the conveyor-agent binary.
+# CGO_ENABLED=0 is the key to creating a static binary.
+# We also add flags to ensure it's statically linked.
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -extldflags=-static" -o /conveyor-agent ./cmd/conveyor-agent
+
+# --- Stage 2: Final Image ---
+# Use the 'scratch' image
+FROM scratch
+
+# Copy the Certificate Authority certificates.
+# This is CRITICAL for your agent to make HTTPS calls to the server.
+# The 'scratch' image has no certificates by default.
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+WORKDIR /app
+
+# Copy our new, fully static agent binary
+COPY --from=builder /conveyor-agent .
+
+ENTRYPOINT ["/app/conveyor-agent"]

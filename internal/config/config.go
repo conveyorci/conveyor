@@ -37,7 +37,7 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("could not parse config file '%s': %w", path, err)
 	}
 
-	// You could add validation here, e.g., check if keys are empty
+	// TODO: add validation here, e.g., check if keys are empty
 	if cfg.Security.SessionKey == "" || cfg.Security.GitHubWebhookSecret == "" {
 		return nil, fmt.Errorf("session_key and github_webhook_secret must be set in the config file")
 	}

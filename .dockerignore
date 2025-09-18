@@ -1,0 +1,16 @@
+# .dockerignore
+
+# Ignore build artifacts
+bin/
+dist/
+
+# Ignore local config and db files
+config.yml
+conveyor.db
+conveyor.db-wal
+conveyor.db-shm
+
+# Ignore git and IDE directories
+.git/
+.idea/
+.vscode/
