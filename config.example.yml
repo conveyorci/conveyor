@@ -18,3 +18,18 @@ security:
 
   # The secret you configured in your GitHub webhook settings.
   github_webhook_secret: "change-this-to-your-github-webhook-secret"
+
+forges:
+  github:
+    enabled: true
+    # Credentials from the GitHub OAuth App configured by the admin
+    client_id: "your_instance_wide_github_client_id"
+    client_secret: "your_instance_wide_github_client_secret"
+
+  gitlab:
+    enabled: false
+    # Credentials from the GitLab Application configured by the admin
+    client_id: ""
+    client_secret: ""
+    # GitLab requires a specific URL for self-hosted instances
+    base_url: "https://gitlab.com"
