@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <title>Repositories - Conveyor CI</title>
-    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.3/dist/semantic.min.css" rel="stylesheet" type="text/css">
+    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.css" rel="stylesheet" type="text/css">
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.3/dist/semantic.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.js"></script>
     <style>body {
         background-color: #F9FAFB;
     }</style>
@@ -12,42 +12,83 @@
 <body>
 <header class="ui fixed inverted green menu"></header>
 <div class="ui main container" style="margin-top: 6em;">
-    <h1 class="ui header">Repositories</h1>
+    <div class="ui grid">
+        <div class="eight wide column">
+            <h1 class="ui header">Repositories</h1>
+        </div>
+        <div class="eight wide column right aligned" id="repo-actions">
+            <!-- Button will be injected here by JS -->
+        </div>
+    </div>
+
+    <div class="ui divider"></div>
+
     <div class="ui relaxed divided list" id="repo-list">
-        <!-- repo items will be injected here -->
+        <!-- Repo items will be injected here -->
     </div>
 </div>
 <script src="/js/components/header.js"></script>
 <script>
+    function timeAgo(date) {
+        if (!date) return 'No builds yet';
+        const seconds = Math.floor((new Date() - new Date(date)) / 1000);
+        let interval = seconds / 31536000;
+        if (interval > 1) return Math.floor(interval) + " years ago";
+        interval = seconds / 2592000;
+        if (interval > 1) return Math.floor(interval) + " months ago";
+        // todo: add more intervals for days, hours, minutes
+        return Math.floor(seconds) + " seconds ago";
+    }
+
     async function fetchRepos() {
         const list = document.getElementById('repo-list');
         try {
             const response = await fetch('/api/repositories');
             const repos = await response.json();
-
             if (!repos || repos.length === 0) {
                 list.innerHTML = '<div class="ui message"><p>No repositories with builds found.</p></div>';
                 return;
             }
 
             list.innerHTML = repos.map(repo => `
-                <a class="item" href="/pipelines/?repo=${repo.full_name}">
-                    <i class="large github middle aligned icon"></i>
-                    <div class="content">
-                        <div class="header">${repo.full_name}</div>
-                        <div class="description">Last build was successful 2 hours ago.</div>
-                    </div>
-                </a>
-            `).join('');
+            <a class="item" href="/pipelines/index.html?repo=${repo.full_name}">
+                <i class="large github middle aligned icon"></i>
+                <div class="content">
+                    <div class="header">${repo.full_name}</div>
+                    <!-- USE THE REAL DATA -->
+                    <div class="description">Last build: ${timeAgo(repo.last_build_at.Time)}</div>
+                </div>
+            </a>
+        `).join('');
         } catch (error) {
             list.innerHTML = '<div class="ui negative message"><p>Failed to load repositories.</p></div>';
             console.error("API Error:", error);
         }
     }
 
+    async function checkAuthAndRenderActions() {
+        const actionsContainer = document.getElementById('repo-actions');
+        try {
+            const response = await fetch('/api/user/profile');
+            if (response.ok) {
+                actionsContainer.innerHTML = `
+                    <a class="ui green button" href="/repos/activate.html">
+                        <i class="plus icon"></i>
+                        Activate Repository
+                    </a>
+                `;
+            } else {
+                actionsContainer.innerHTML = '';
+            }
+        } catch (error) {
+            actionsContainer.innerHTML = '';
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         renderHeader('.ui.fixed.menu');
         fetchRepos();
+        checkAuthAndRenderActions();
     });
 </script>
 </body>

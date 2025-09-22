@@ -19,36 +19,75 @@
     <div class="ui grid">
         <div class="four wide column">
             <div class="ui vertical fluid tabular menu">
-                <a class="item active" data-tab="profile">Profile</a>
-                <a class="item" data-tab="connections">Connections</a>
+                <a class="item" data-tab="profile">Profile</a>
+                <a class="item active" data-tab="connections">Connections</a>
                 <a class="item" data-tab="agents">Agents</a>
             </div>
         </div>
         <div class="twelve wide stretched column">
-            <div class="ui tab segment active" data-tab="profile">
-                <h3 class="ui header">Profile Settings</h3>
-                <p>Change your username, email, or password.</p>
-                <!-- profile settings form here -->
-            </div>
-            <div class="ui tab segment" data-tab="connections">
-                <h3 class="ui header">Forge Connections</h3>
-                <p>Connect your Conveyor account to GitHub, GitLab, etc.</p>
-                <button class="ui github button"><i class="github icon"></i> Connect with GitHub</button>
-                <!-- this button would link to OAuth flow -->
-            </div>
-            <div class="ui tab segment" data-tab="agents">
-                <h3 class="ui header">Agents</h3>
-                <p>Manage your registered build agents.</p>
-                <!-- agent list and registration token would go here -->
+            <div class="twelve wide stretched column">
+                <div class="ui tab segment" data-tab="profile">
+                    <h3 class="ui header">Profile Settings</h3>
+                    <p>Change your username, email, or password.</p>
+                </div>
+
+                <div class="ui tab segment active" data-tab="connections">
+                    <h3 class="ui header">Forge Connections</h3>
+                    <p>Connect your account to external services to activate your repositories.</p>
+                    <div class="ui relaxed divided list" id="connection-list">
+                        <div class="ui active centered inline loader"></div>
+                    </div>
+                </div>
+
+                <div class="ui tab segment" data-tab="agents">
+                    <h3 class="ui header">Agents</h3>
+                    <p>Manage your registered build agents.</p>
+                </div>
             </div>
         </div>
     </div>
 </div>
 <script src="/js/components/header.js"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        renderHeader('.ui.fixed.menu');
+    async function loadConnections() {
+        const list = document.getElementById('connection-list');
+        try {
+            const response = await fetch('/api/user/connections');
+            if (!response.ok) {
+                throw new Error("Failed to fetch connections from server.");
+            }
+            let connections = await response.json();
+            if (!Array.isArray(connections)) {
+                connections = []; 
+            }
+
+            const githubConnected = connections.some(c => c.forge_type === 'github');
+            let githubHTML = `
+            <div class="item">
+                <i class="large github middle aligned icon"></i>
+                <div class="content">
+                    <div class="header">GitHub</div>
+                    <div class="description">${githubConnected ? 'Connected' : 'Not Connected'}</div>
+                </div>
+                <div class="right floated content">
+                    ${githubConnected
+                ? '<button class="ui red button">Disconnect</button>'
+                : '<a class="ui github button" href="/auth/github/login"><i class="github icon"></i> Connect</a>'
+            }
+                </div>
+            </div>
+        `;
+            list.innerHTML = githubHTML;
+        } catch (error) {
+            console.error("Error loading connections:", error);
+            list.innerHTML = `<div class="ui negative message"><p>Could not load connection status.</p></div>`;
+        }
+    }
+
+    $(document).ready(function () {
         $('.menu .item').tab();
+        renderHeader('.ui.fixed.menu');
+        loadConnections();
     });
 </script>
 </body>

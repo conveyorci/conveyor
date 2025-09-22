@@ -22,51 +22,162 @@
     </style>
 </head>
 <body>
+<!-- Header Placeholder -->
 <header class="ui fixed inverted green menu"></header>
-<div class="ui main container" style="margin-top: 6em;">
-    <div id="pipeline-header">
-        <!-- pipeline summary will be injected here -->
+
+<div class="ui main container">
+    <!-- Pipeline Header Segment -->
+    <div class="ui segment" id="pipeline-header">
+        <div class="ui active centered inline loader"></div>
+        <!-- Dynamic header content will be injected here -->
     </div>
 
+    <!-- Tab Menu -->
     <div class="ui top attached tabular menu">
         <a class="item active" data-tab="logs">Logs</a>
         <a class="item" data-tab="artifacts">Artifacts</a>
+        <a class="item" data-tab="settings">Actions</a>
     </div>
 
+    <!-- Logs Tab Content -->
     <div class="ui bottom attached tab segment active" data-tab="logs">
         <pre class="log-container" id="log-output">Loading logs...</pre>
     </div>
 
+    <!-- Artifacts Tab Content -->
     <div class="ui bottom attached tab segment" data-tab="artifacts">
-        <div class="ui list" id="artifact-list">
-            <!-- artifact links will be injected here -->
+        <h3 class="ui header">Build Artifacts</h3>
+        <div class="ui relaxed divided list" id="artifact-list">
+            <!-- Artifacts will be injected here -->
+            <div class="ui active centered inline loader"></div>
         </div>
     </div>
+
+    <!-- Settings/Actions Tab Content -->
+    <div class="ui bottom attached tab segment" data-tab="settings">
+        <h3 class="ui header">Pipeline Actions</h3>
+        <button class="ui green button" id="restart-btn">
+            <i class="redo icon"></i>
+            Restart Pipeline
+        </button>
+        <button class="ui red button disabled" id="cancel-btn">
+            <i class="stop circle icon"></i>
+            Cancel Pipeline
+        </button>
+    </div>
 </div>
+
 <script src="/js/components/header.js"></script>
 <script>
     const urlParams = new URLSearchParams(window.location.search);
     const jobId = urlParams.get('id');
-
-    async function fetchDetails() {
-        const details = await fetch(`/api/pipelines/${jobId}`).then(res => res.json());
-        // TODO: populate #pipeline-header with commit message, author, status, etc.
-
-        // TODO: complete the real-time logs
-        const logs = await fetch(`/api/logs/${jobId}`).then(res => res.text());
-        document.getElementById('log-output').textContent = logs;
-
-        const artifacts = await fetch(`/api/artifacts/${jobId}`).then(res => res.json());
-        // TODO: populate #artifact-list with download links
+    let repoNameForRedirect = '';
+    function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
     }
 
-    $(document).ready(function () {
+    function renderHeader(details) {
+        const header = document.getElementById('pipeline-header');
+        const statusMap = {
+            success: {color: 'green', icon: 'check circle'},
+            failed: {color: 'red', icon: 'times circle'},
+            running: {color: 'blue', icon: 'sync alternate spinning'},
+            pending: {color: 'grey', icon: 'pause circle'},
+        };
+        const status = statusMap[details.status] || statusMap.pending;
+        repoNameForRedirect = details.repo_name;
+        header.innerHTML = `
+            <div class="ui grid">
+                <div class="twelve wide column">
+                    <h2 class="ui ${status.color} header">
+                        <i class="${status.icon} icon"></i>
+                        <div class="content">
+                            ${details.repo_name}
+                            <div class="sub header">${details.commit_message}</div>
+                        </div>
+                    </h2>
+                </div>
+                <div class="four wide column right aligned">
+                     <div class="ui labeled button" tabindex="0">
+                        <div class="ui button"><i class="fork icon"></i>${(details.commit_ref || '').replace('refs/heads/', '')}</div>
+                        <a class="ui basic label">${(details.commit_sha || '').substring(0, 7)}</a>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    async function fetchAllDetails() {
+        try {
+            const detailsResponse = await fetch(`/api/pipelines/${jobId}`);
+            if (!detailsResponse.ok) throw new Error(`Details API failed: ${detailsResponse.status}`);
+            const details = await detailsResponse.json();
+            renderHeader(details);
+            document.title = `${details.commit_message.split('\n')[0]} - Conveyor CI`;
+
+            const logsResponse = await fetch(`/api/logs/${jobId}`);
+            if (!logsResponse.ok) throw new Error(`Logs API failed: ${logsResponse.status}`);
+            const logs = await logsResponse.text();
+            document.getElementById('log-output').textContent = logs;
+
+            const artifactsResponse = await fetch(`/api/pipelines/${jobId}/artifacts`);
+            if (!artifactsResponse.ok) throw new Error(`Artifacts API failed: ${artifactsResponse.status}`);
+            const artifacts = await artifactsResponse.json();
+            const artifactList = document.getElementById('artifact-list');
+
+            if (artifacts && artifacts.length > 0) {
+                artifactList.innerHTML = artifacts.map(art => `
+                    <div class="item">
+                        <div class="right floated content">
+                            <a class="ui tiny primary button" href="/api/artifacts/download/${art.id}" target="_blank">
+                                <i class="download icon"></i> Download
+                            </a>
+                        </div>
+                        <i class="large file alternate middle aligned icon"></i>
+                        <div class="content">
+                            <div class="header">${art.filename}</div>
+                            <div class="description">${formatBytes(art.filesize)}</div>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                artifactList.innerHTML = '<div class="ui message"><p>No artifacts were found for this build.</p></div>';
+            }
+
+        } catch (error) {
+            console.error("Failed to load pipeline details:", error);
+            const container = document.querySelector('.ui.main.container');
+            container.innerHTML = `<div class="ui negative message"><div class="header">Error Loading Pipeline</div><p>${error.message}</p></div>`;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
         renderHeader('.ui.fixed.menu');
         $('.menu .item').tab();
-    });
+        fetchAllDetails();
 
-    fetchDetails();
-    setInterval(fetchDetails, 3000);
+        const restartBtn = document.getElementById('restart-btn');
+        restartBtn.addEventListener('click', async () => {
+            if (!confirm('Are you sure you want to restart this pipeline?')) return;
+
+            restartBtn.classList.add('loading', 'disabled');
+            try {
+                const response = await fetch(`/api/pipelines/${jobId}/restart`, { method: 'POST' });
+                if (!response.ok) throw new Error("Failed to restart pipeline.");
+
+                window.location.href = `/pipelines/index.html?repo=${repoNameForRedirect}`;
+            } catch (error) {
+                console.error("Restart failed:", error);
+                alert("Could not restart the pipeline.");
+                restartBtn.classList.remove('loading', 'disabled');
+            }
+        });
+    });
 </script>
 </body>
 </html>

@@ -11,53 +11,81 @@
         body {
             background-color: #F9FAFB;
         }
-
         .main.container {
             padding-top: 6em;
             padding-bottom: 2em;
+        }
+        #org-list .item {
+            padding-top: 1em !important;
+            padding-bottom: 1em !important;
+        }
+        .letter-avatar {
+            width: 100%;
+            padding-top: 100%;
+            position: relative;
+            color: white;
+            font-weight: bold;
+        }
+        .letter-avatar span {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 8rem;
         }
     </style>
 </head>
 <body>
 <header class="ui fixed inverted green menu"></header>
 <div class="ui main container">
-    <div class="ui middle aligned centered grid">
-        <div class="row">
-            <div class="four wide column">
-                <div class="ui card">
-                    <div class="image" id="profile-avatar-large">
-                        <!-- avatar -->
+    <div class="ui grid">
+        <div class="five wide column">
+            <div class="ui card">
+                <div class="image">
+                    <div id="profile-avatar-large" class="letter-avatar">
+                        <!-- avatar will be generated here -->
                     </div>
-                    <div class="content">
-                        <a class="header" id="profile-username">Loading...</a>
-                        <div class="meta">
-                            <span class="date" id="profile-created-at"></span>
-                        </div>
+                </div>
+                <div class="content">
+                    <div class="header" id="profile-username">Loading...</div>
+                    <div class="meta">
+                        <span class="date" id="profile-created-at"></span>
                     </div>
-                    <div class="extra content">
-                        <a><i class="users icon"></i><span id="org-count">0</span> Organizations</a>
-                    </div>
+                </div>
+                <div class="extra content">
+                    <a href="/settings/index.html">
+                        <i class="cog icon"></i>
+                        Account Settings
+                    </a>
                 </div>
             </div>
-            <div class="twelve wide column">
-                <h2 class="ui header">My Organizations</h2>
-                <div class="ui relaxed divided list" id="org-list">
-                    <div class="ui active centered inline loader"></div>
+        </div>
+
+        <div class="eleven wide column">
+            <div class="ui grid">
+                <div class="eight wide column">
+                    <h2 class="ui header">My Organizations</h2>
                 </div>
-                <a class="ui green button" href="/orgs/new.html">
-                    <i class="plus icon"></i>
-                    Create New Organization
-                </a>
+                <div class="eight wide column right aligned">
+                    <a class="ui green button" href="/orgs/new.html">
+                        <i class="plus icon"></i>
+                        New Organization
+                    </a>
+                </div>
+            </div>
+            <div class="ui divider"></div>
+
+            <div class="ui relaxed divided list" id="org-list">
+                <div class="ui active centered inline loader"></div>
             </div>
         </div>
     </div>
 </div>
 <script src="/js/components/header.js"></script>
 <script>
-    async function loadProfile() {
+    async function loadProfileAndOrgs() {
         try {
             const profileResponse = await fetch('/api/user/profile');
-
             if (!profileResponse.ok) {
                 if (profileResponse.status === 401 || profileResponse.status === 403) {
                     window.location.href = '/login.html';
@@ -65,18 +93,17 @@
                 }
                 throw new Error(`Profile API responded with status: ${profileResponse.status}`);
             }
-
             const profile = await profileResponse.json();
 
             const firstLetter = (profile.username || '?').charAt(0).toUpperCase();
             const colors = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef'];
             const colorIndex = (firstLetter.charCodeAt(0) - 'A'.charCodeAt(0)) % colors.length;
             const color = colors[colorIndex];
-            document.getElementById('profile-avatar-large').innerHTML = `
-                <div style="width: 100%; height: 290px; background-color: ${color}; color: white; display: flex; align-items: center; justify-content: center; font-size: 10rem; font-weight: bold;">
-                    ${firstLetter}
-                </div>
-            `;
+
+            const avatarContainer = document.getElementById('profile-avatar-large');
+            avatarContainer.style.backgroundColor = color;
+            avatarContainer.innerHTML = `<span>${firstLetter}</span>`;
+
             document.getElementById('profile-username').textContent = profile.username;
             document.getElementById('profile-created-at').textContent = `Joined on ${new Date(profile.created_at).toLocaleDateString()}`;
 
@@ -87,33 +114,36 @@
             const orgs = await orgsResponse.json();
 
             const orgList = document.getElementById('org-list');
-            document.getElementById('org-count').textContent = orgs ? orgs.length : 0;
 
             if (orgs && orgs.length > 0) {
+                const orgCountSpan = document.getElementById('org-count');
+                if(orgCountSpan) orgCountSpan.textContent = orgs.length;
+
                 orgList.innerHTML = orgs.map(org => `
-                    <a class="item" href="/orgs/settings.html?id=${org.id}">
+                    <div class="item">
+                        <div class="right floated content">
+                            <a class="ui mini button" href="/orgs/settings.html?id=${org.id}">Settings</a>
+                        </div>
                         <i class="large users middle aligned icon"></i>
                         <div class="content">
-                            <div class="header">${org.name}</div>
-                            <div class="description">Owner/Member</div>
+                            <a class="header" href="/orgs/${org.id}/repos">${org.name}</a>
+                            <div class="description">You are an owner/member of this organization.</div>
                         </div>
-                    </a>
+                    </div>
                 `).join('');
             } else {
-                orgList.innerHTML = '<div class="ui message"><p>You are not a member of any organizations.</p></div>';
+                orgList.innerHTML = '<div class="ui message"><p>You are not a member of any organizations yet. Why not create one?</p></div>';
             }
 
         } catch (error) {
             console.error("Failed to load profile page:", error);
-
             const pageContent = document.querySelector('.ui.main.container > .ui.grid');
             if (pageContent) {
                 pageContent.innerHTML = `
                     <div class="sixteen wide column">
                         <div class="ui negative message">
                             <div class="header">Could Not Load Page Data</div>
-                            <p>There was a problem communicating with the server. Please try refreshing the page. If the problem persists, you may need to log in again.</p>
-                            <a class="ui button" href="/login.html">Go to Login</a>
+                            <p>There was a problem communicating with the server. Please try refreshing.</p>
                         </div>
                     </div>
                 `;
@@ -123,7 +153,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         renderHeader('.ui.fixed.menu');
-        loadProfile();
+        loadProfileAndOrgs();
     });
 </script>
 </body>

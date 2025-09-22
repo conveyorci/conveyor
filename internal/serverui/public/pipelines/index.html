@@ -37,7 +37,6 @@
             font-family: monospace;
         }
 
-        /* Make the side menu sticky */
         .sticky-column {
             position: sticky;
             top: 6em;
@@ -68,54 +67,6 @@
 </div>
 <script src="/js/components/header.js"></script>
 <script>
-    // --- mock data, will be removed later --- 
-    const mockJobs = [
-        {
-            id: 'job1',
-            status: 'success',
-            repo_name: 'conveyor-ci/conveyor',
-            commit_message: 'feat: Implement new dashboard UI',
-            commit_sha: 'eff9e6a3e8',
-            commit_ref: 'main',
-            commit_author: 'user1',
-            created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-            duration: '2 min 9 sec'
-        },
-        {
-            id: 'job2',
-            status: 'failed',
-            repo_name: 'conveyor-ci/plugin-docker',
-            commit_message: 'fix: Handle edge case in volume mounting',
-            commit_sha: '2e860db3cc',
-            commit_ref: 'fix-docker-bug',
-            commit_author: 'user2',
-            created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-            duration: '40 sec'
-        },
-        {
-            id: 'job3',
-            status: 'running',
-            repo_name: 'conveyor-ci/conveyor',
-            commit_message: 'chore(deps): Update typescript to v5',
-            commit_sha: 'a1fca1b443',
-            commit_ref: 'dependabot/npm',
-            commit_author: 'dependabot',
-            created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            duration: 'not started yet'
-        },
-        {
-            id: 'job4',
-            status: 'pending',
-            repo_name: 'conveyor-ci/conveyor',
-            commit_message: 'docs: Update installation guide',
-            commit_sha: 'ec02379b04',
-            commit_ref: 'docs-update',
-            commit_author: 'user1',
-            created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-            duration: 'not started yet'
-        },
-    ];
-
     const statusMap = {
         success: {color: 'green', icon: 'check circle outline'},
         failed: {color: 'red', icon: 'times circle outline'},
@@ -123,17 +74,17 @@
         pending: {color: 'grey', icon: 'pause circle outline'}
     };
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const repoName = urlParams.get('repo');
-
-    document.title = `${repoName} - Conveyor CI`;
-    document.getElementById('repo-header').textContent = `Builds for ${repoName}`;
+    function timeAgo(dateStr) {
+        if (!dateStr) return 'N/A';
+        return new Date(dateStr).toLocaleString();
+    }
 
     function createBuildItemHTML(job) {
         const status = statusMap[job.status] || statusMap.pending;
-        const shortSha = job.commit_sha.substring(0, 8);
-        const friendlyRef = job.commit_ref.replace('refs/heads/', '');
-        const timeAgo = new Date(job.created_at).toLocaleString();
+        const shortSha = (job.commit_sha || '').substring(0, 8);
+        const friendlyRef = (job.commit_ref || '').replace('refs/heads/', '');
+        const timeAgo = timeAgo(job.created_at);
+        const duration = 'N/A';
 
         return `
             <a class="item job-item" href="/pipelines/view.html?id=${job.id}">
@@ -141,15 +92,15 @@
                 <i class="large middle aligned icon ${status.icon} ${status.color}"></i>
                 <div class="content">
                     <div>
-                        <div class="header">${job.commit_message}</div>
-                        <div class="description">${job.repo_name}</div>
+                        <div class="header">${job.commit_message || 'No commit message'}</div>
+                        <div class="description">${job.repo_name || 'Unknown repository'}</div>
                     </div>
                     <div class="meta">
                         <div><i class="fork icon"></i>${friendlyRef}</div>
                         <div><i class="code branch icon"></i><span class="commit-sha">${shortSha}</span></div>
                     </div>
                     <div class="meta">
-                        <div><i class="clock outline icon"></i>${job.duration}</div>
+                        <div><i class="clock outline icon"></i>${duration}</div>
                         <div><i class="calendar alternate outline icon"></i>${timeAgo}</div>
                     </div>
                 </div>
@@ -163,8 +114,8 @@
                 <div class="item">
                     <i class="large middle aligned icon ${status.icon} ${status.color}"></i>
                     <div class="content">
-                        <div class="header">${job.repo_name}</div>
-                        <div class="description">${job.commit_message}</div>
+                        <div class="header">${job.repo_name || 'Unknown repository'}</div>
+                        <div class="description">${job.commit_message || 'No commit message'}</div>
                     </div>
                 </div>
             `;
@@ -175,28 +126,40 @@
         const activityFeed = document.getElementById('activity-feed');
 
         try {
-            // TODO: make api call here
-            // const jobs = await fetch('/api/jobs').then(res => res.json());
-            const jobs = mockJobs;
+            const urlParams = new URLSearchParams(window.location.search);
+            const repoName = urlParams.get('repo');
 
+            const response = await fetch(`/api/jobs?repo=${repoName}`);
+            if (!response.ok) {
+                if (response.status === 401 || response.status === 403) {
+                    window.location.href = '/login.html';
+                    return;
+                }
+                throw new Error(`Server responded with status: ${response.status}`);
+            }
+
+            const jobs = await response.json();
             if (!jobs || jobs.length === 0) {
-                buildFeed.innerHTML = '<div class="ui message"><p>No builds in the queue.</p></div>';
+                buildFeed.innerHTML = '<div class="ui message"><p>No builds found for this repository.</p></div>';
                 activityFeed.innerHTML = '<div class="ui message"><p>No recent activity.</p></div>';
                 return;
             }
-
             buildFeed.innerHTML = jobs.map(createBuildItemHTML).join('');
             activityFeed.innerHTML = jobs.map(createActivityItemHTML).join('');
         } catch (error) {
-            buildFeed.innerHTML = '<div class="ui negative message"><p>Failed to load build data from the server.</p></div>';
             console.error("API Error:", error);
+            buildFeed.innerHTML = '<div class="ui negative message"><p>Failed to load build data from the server.</p></div>';
         }
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const repoName = urlParams.get('repo');
+        document.title = `${repoName || 'Pipelines'} - Conveyor CI`;
+        document.getElementById('repo-header').textContent = `Builds for ${repoName || 'Unknown Repository'}`;
         renderHeader('.ui.fixed.menu');
         renderFeeds();
-        // setInterval(renderFeeds, 5000);
+        setInterval(renderFeeds, 5000);
     });
 </script>
 </body>

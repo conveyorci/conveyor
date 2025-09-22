@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Activate Repositories - Conveyor CI</title>
+    <link href="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.css" rel="stylesheet" type="text/css">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.js"></script>
+    <style>
+        body {
+            background-color: #F9FAFB;
+        }
+        .main.container {
+            margin-top: 6em;
+        }
+        .repo-list .item {
+            padding-top: 1em !important;
+            padding-bottom: 1em !important;
+        }
+    </style>
+</head>
+<body>
+<header class="ui fixed inverted green menu"></header>
+
+<div class="ui main container">
+    <h1 class="ui header">Activate Repositories</h1>
+    <p>Select repositories from your connected accounts to enable them in Conveyor CI.</p>
+
+    <div class="ui segment">
+        <div class="ui fluid icon input">
+            <input type="text" id="repo-filter" placeholder="Filter repositories...">
+            <i class="search icon"></i>
+        </div>
+
+        <div class="ui divider"></div>
+
+        <div class="ui relaxed divided list repo-list" id="repo-list-container">
+            <div class="ui active centered inline loader"></div>
+        </div>
+    </div>
+</div>
+
+<script src="/js/components/header.js"></script>
+<script>
+    async function loadReposFromForges() {
+        const listContainer = document.getElementById('repo-list-container');
+        try {
+            const response = await fetch('/api/user/source-repos');
+
+            if (!response.ok) {
+                if (response.status === 401 || response.status === 403) {
+                    window.location.href = '/login.html';
+                }
+                throw new Error(`Server returned status ${response.status}`);
+            }
+
+            const repos = await response.json();
+
+            if (!repos || repos.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="ui message info">
+                        <div class="header">No Repositories Found</div>
+                        <p>We couldn't find any repositories. Make sure you have connected a forge (like GitHub) in your <a href="/settings/index.html">settings</a>.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            window.allRepos = repos;
+            renderRepoList(repos);
+
+        } catch(e) {
+            console.error("Failed to load source repositories:", e);
+            listContainer.innerHTML = `
+                <div class="ui message negative">
+                    <div class="header">Error Loading Repositories</div>
+                    <p>There was a problem fetching your repositories. Please try again or check your connections in settings.</p>
+                </div>
+            `;
+        }
+    }
+
+    function renderRepoList(repos) {
+        const listContainer = document.getElementById('repo-list-container');
+        listContainer.innerHTML = repos.map(repo => `
+            <div class="item" data-repo-name="${repo.full_name}">
+                <div class="right floated content">
+                    <!-- TODO: Check if repo is already active and show a different button -->
+                    <button class="ui tiny green button activate-btn" data-repo-name="${repo.full_name}">
+                        <i class="plus icon"></i>
+                        Activate
+                    </button>
+                </div>
+                <i class="large ${repo.forge_type || 'github'} middle aligned icon"></i>
+                <div class="content">
+                    <div class="header">${repo.full_name}</div>
+                    <div class="description">${repo.description || 'No description provided.'}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        renderHeader('.ui.fixed.menu');
+        loadReposFromForges();
+
+        const filterInput = document.getElementById('repo-filter');
+        filterInput.addEventListener('keyup', () => {
+            const searchTerm = filterInput.value.toLowerCase();
+            if (!window.allRepos) return;
+
+            const filteredRepos = window.allRepos.filter(repo =>
+                repo.full_name.toLowerCase().includes(searchTerm)
+            );
+            renderRepoList(filteredRepos);
+        });
+        const listContainer = document.getElementById('repo-list-container');
+        listContainer.addEventListener('click', async (event) => {
+            const button = event.target.closest('.activate-btn');
+            if (!button) return;
+            button.classList.add('loading', 'disabled');
+            const repoFullName = button.dataset.repoName;
+            try {
+                const response = await fetch('/api/repos/activate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ repo_full_name: repoFullName })
+                });
+
+                if (!response.ok) {
+                    throw new Error("Failed to activate repository.");
+                }
+
+                button.classList.remove('loading', 'green');
+                button.classList.add('disabled', 'grey');
+                button.innerHTML = '<i class="check icon"></i> Activated';
+
+            } catch(error) {
+                console.error("Activation failed:", error);
+                button.classList.remove('loading', 'disabled');
+            }
+        });
+    });
+</script>
+</body>
+</html>
