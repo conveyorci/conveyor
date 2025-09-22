@@ -1,6 +1,7 @@
 package shared
 
 import (
+	"database/sql"
 	"time"
 
 	"github.com/conveyorci/conveyor/internal/pipeline"
@@ -61,9 +62,37 @@ type Organization struct {
 
 // Repository represents a source code repository.
 type Repository struct {
-	ID       int    `json:"id"`
-	Owner    string `json:"owner"`
-	Name     string `json:"name"`
-	FullName string `json:"full_name"`
-	URL      string `json:"url"`
+	ID          int          `json:"id"`
+	Owner       string       `json:"owner"`
+	Name        string       `json:"name"`
+	FullName    string       `json:"full_name"`
+	URL         string       `json:"url"`
+	LastBuildAt sql.NullTime `json:"last_build_at,omitempty"`
+}
+
+// SourceRepo represents a repository from a forge API
+type SourceRepo struct {
+	FullName    string `json:"full_name"`
+	Description string `json:"description"`
+	ForgeType   string `json:"forge_type"`
+	CloneURL    string `json:"clone_url"`
+}
+
+// Connection represents a user's connection to a forge
+type Connection struct {
+	ID           int       `json:"id"`
+	UserID       int       `json:"user_id"`
+	ForgeType    string    `json:"forge_type"`
+	AccessToken  string    `json:"access_token"` // Be careful not to expose this to the client if not needed
+	RefreshToken string    `json:"-"`            // Definitely don't send this to the client
+	TokenExpiry  time.Time `json:"token_expiry"`
+}
+
+// Artifact represents a file produced by a build job.
+type Artifact struct {
+	ID          int    `json:"id"`
+	JobID       string `json:"job_id"`
+	Filename    string `json:"filename"`
+	Filesize    int64  `json:"filesize"`
+	StoragePath string `json:"-"` // Don't expose the internal disk path in the API
 }

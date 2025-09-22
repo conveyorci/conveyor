@@ -8,7 +8,12 @@ type Pipeline struct {
 
 // Job represents a single, isolated execution environment (a single container).
 type Job struct {
-	Executor string   `yaml:"executor,omitempty"`
-	Image    string   `yaml:"image"`
-	Commands []string `yaml:"commands"`
+	Executor  string          `yaml:"executor,omitempty"`
+	Image     string          `yaml:"image"`
+	Commands  []string        `yaml:"commands"`
+	Artifacts ArtifactsConfig `yaml:"artifacts,omitempty"`
+}
+
+type ArtifactsConfig struct {
+	Paths []string `yaml:"paths"`
 }

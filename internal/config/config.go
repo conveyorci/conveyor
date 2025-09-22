@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Server       ServerConfig   `yaml:"server"`
 	Security     SecurityConfig `yaml:"security"`
+	Forges       ForgeConfigs   `yaml:"forges"`
 	ResolvedPath string         `yaml:"-"`
 }
 
@@ -25,6 +26,24 @@ type ServerConfig struct {
 type SecurityConfig struct {
 	SessionKey          string `yaml:"session_key"`
 	GitHubWebhookSecret string `yaml:"github_webhook_secret"`
+}
+
+type ForgeConfigs struct {
+	GitHub ForgeGitHubConfig `yaml:"github"`
+	GitLab ForgeGitLabConfig `yaml:"gitlab"`
+}
+
+type ForgeGitHubConfig struct {
+	Enabled      bool   `yaml:"enabled"`
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret"`
+}
+
+type ForgeGitLabConfig struct {
+	Enabled      bool   `yaml:"enabled"`
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret"`
+	BaseURL      string `yaml:"base_url"`
 }
 
 // findConfigFile implements the search logic for the config file.

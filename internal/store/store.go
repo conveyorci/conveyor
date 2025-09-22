@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/conveyorci/conveyor/internal/pipeline"
 	"github.com/conveyorci/conveyor/internal/shared"
@@ -59,7 +60,7 @@ func createSchema(db *sql.DB) error {
 	jobsTable := `
 	CREATE TABLE IF NOT EXISTS jobs (
 		id TEXT PRIMARY KEY,
-		repo_id INTEGER,
+		repo_id INTEGER NOT NULL,
 		status TEXT NOT NULL,
 		job_data TEXT NOT NULL,
 		error_message TEXT,
@@ -141,7 +142,8 @@ func createSchema(db *sql.DB) error {
 		return err
 	}
 
-	// --- FORGE/SCM CONNECTIONS (e.g., GitHub) ---
+	// why tf is there --- shit, i deleted them
+	// FORGE/SCM CONNECTIONS (e.g., GitHub)
 	connectionsTable := `
 	CREATE TABLE IF NOT EXISTS connections (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,7 +153,8 @@ func createSchema(db *sql.DB) error {
 		refresh_token TEXT,
 		token_expiry DATETIME,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY(user_id) REFERENCES users(id)
+		FOREIGN KEY(user_id) REFERENCES users(id),
+	    UNIQUE(user_id, forge_type)
 	);`
 	_, err := db.Exec(connectionsTable)
 
@@ -291,24 +294,65 @@ func (s *Store) ListOrgsForUser(userID int) ([]shared.Organization, error) {
 	return orgs, nil
 }
 
-// ListRepositories retrieves a unique list of repositories that have had builds.
-func (s *Store) ListRepositories() ([]shared.Repository, error) {
-	// TODO: improve this later
-	query := `SELECT DISTINCT repo_name FROM jobs WHERE repo_name IS NOT NULL ORDER BY repo_name ASC`
-	rows, err := s.db.Query(query)
+// ActivateRepository adds a repository to the local database.
+func (s *Store) ActivateRepository(fullName, cloneURL, owner, name string) (*shared.Repository, error) {
+	query := `INSERT INTO repositories (full_name, url, owner, name) VALUES (?, ?, ?, ?)`
+	res, err := s.db.Exec(query, fullName, cloneURL, owner, name)
 	if err != nil {
 		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	return &shared.Repository{
+		ID:       int(id),
+		FullName: fullName,
+		URL:      cloneURL,
+		Owner:    owner,
+		Name:     name,
+	}, nil
+}
+
+// ListRepositories now reads from the dedicated repositories table.
+func (s *Store) ListRepositories() ([]shared.Repository, error) {
+	query := `
+		SELECT 
+			r.id, 
+			r.owner, 
+			r.name, 
+			r.full_name, 
+			r.url, 
+			MAX(j.created_at) as last_build_at
+		FROM 
+			repositories r
+		LEFT JOIN 
+			jobs j ON r.id = j.repo_id
+		GROUP BY 
+			r.id
+		ORDER BY 
+			last_build_at DESC NULLS LAST, r.full_name ASC;
+	`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query repositories: %w", err)
 	}
 	defer rows.Close()
 
 	var repos []shared.Repository
 	for rows.Next() {
 		var repo shared.Repository
-		if err := rows.Scan(&repo.FullName); err != nil {
-			return nil, err
+		if err := rows.Scan(&repo.ID, &repo.Owner, &repo.Name, &repo.FullName, &repo.URL, &repo.LastBuildAt); err != nil {
+			return nil, fmt.Errorf("failed to scan repository row: %w", err)
 		}
 		repos = append(repos, repo)
 	}
+
+	// Check for any errors during iteration
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating repository rows: %w", err)
+	}
+
 	return repos, nil
 }
 
@@ -396,15 +440,27 @@ func (s *Store) GetLatestStatusForBranch(repoFullName, branchName string) (share
 }
 
 // QueueJob inserts a new job into the database with 'pending' status.
-func (s *Store) QueueJob(id string, job pipeline.Job, repo, msg, sha, ref, author string) error {
+func (s *Store) QueueJob(id string, job pipeline.Job, repoFullName, msg, sha, ref, author string) error {
 	jobData, err := json.Marshal(job)
 	if err != nil {
 		return fmt.Errorf("could not marshal job data: %w", err)
 	}
 
-	query := `INSERT INTO jobs (id, status, job_data, repo_name, commit_message, commit_sha, commit_ref, commit_author) 
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-	_, err = s.db.Exec(query, id, shared.StatusPending, string(jobData), repo, msg, sha, ref, author)
+	var repoID int
+	err = s.db.QueryRow("SELECT id FROM repositories WHERE full_name = ?", repoFullName).Scan(&repoID)
+	if err != nil {
+		// this can happen if a webhook fires for a repo that hasn't been activated yet
+		// we could choose to auto-activate it here, or just log an error
+		// i need to think about this
+		return fmt.Errorf("could not find activated repository with name '%s': %w", repoFullName, err)
+	}
+	// ---
+
+	query := `
+		INSERT INTO jobs (id, repo_id, status, job_data, commit_message, commit_sha, commit_ref, commit_author) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err = s.db.Exec(query, id, repoID, shared.StatusPending, string(jobData), msg, sha, ref, author)
 	return err
 }
 
@@ -413,6 +469,65 @@ func (s *Store) UpdateJobStatus(id string, status shared.JobStatus, errorMsg str
 	query := `UPDATE jobs SET status = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
 	_, err := s.db.Exec(query, status, errorMsg, id)
 	return err
+}
+
+// SaveUserConnection saves or updates a user's OAuth token for a specific forge.
+// It checks if a connection already exists and performs an INSERT or UPDATE accordingly.
+func (s *Store) SaveUserConnection(userID int, forgeType, accessToken, refreshToken string, expiry time.Time) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("could not begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Check if a connection already exist
+	var exists int
+	err = tx.QueryRow("SELECT 1 FROM connections WHERE user_id = ? AND forge_type = ?", userID, forgeType).Scan(&exists)
+
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("could not check for existing connection: %w", err)
+	}
+
+	if err == sql.ErrNoRows {
+		// Connection does not exist
+		_, err = tx.Exec(
+			"INSERT INTO connections (user_id, forge_type, access_token, refresh_token, token_expiry) VALUES (?, ?, ?, ?, ?)",
+			userID, forgeType, accessToken, refreshToken, expiry,
+		)
+	} else {
+		// Connection exists
+		_, err = tx.Exec(
+			"UPDATE connections SET access_token = ?, refresh_token = ?, token_expiry = ? WHERE user_id = ? AND forge_type = ?",
+			accessToken, refreshToken, expiry, userID, forgeType,
+		)
+	}
+
+	if err != nil {
+		return fmt.Errorf("could not save connection: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+// ListUserConnections retrieves all forge connections for a given user.
+func (s *Store) ListUserConnections(userID int) ([]shared.Connection, error) {
+	query := `SELECT id, user_id, forge_type, access_token, token_expiry FROM connections WHERE user_id = ?`
+	rows, err := s.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var connections []shared.Connection
+	for rows.Next() {
+		var conn shared.Connection
+		// DOOO NOT select refresh_token to avoid exposing it unnecessarily
+		if err := rows.Scan(&conn.ID, &conn.UserID, &conn.ForgeType, &conn.AccessToken, &conn.TokenExpiry); err != nil {
+			return nil, err
+		}
+		connections = append(connections, conn)
+	}
+	return connections, nil
 }
 
 // RequestJob finds a 'pending' job, updates its status to 'running', and returns it.
@@ -473,35 +588,132 @@ func (s *Store) RequestJob() (*shared.JobRequest, error) {
 	return &jobReq, nil
 }
 
-// ListJobs retrieves all jobs from the database, newest first.
-func (s *Store) ListJobs() ([]shared.JobRequest, error) {
-	query := `SELECT id, status, job_data, error_message, repo_name, commit_message, commit_sha, commit_ref, commit_author, created_at, started_at, finished_at 
-              FROM jobs ORDER BY created_at DESC`
-	rows, err := s.db.Query(query)
+// ListJobs retrieves jobs from the database, newest first.
+// If repoFilter (e.g., "user/repo") is not empty, it will only return jobs for that repository.
+func (s *Store) ListJobs(repoFilter string) ([]shared.JobRequest, error) {
+	query := `
+		SELECT 
+			j.id, j.status, j.job_data, j.error_message, r.full_name, 
+			j.commit_message, j.commit_sha, j.commit_ref, j.commit_author, 
+			j.created_at, j.started_at, j.finished_at 
+		FROM 
+			jobs j
+		LEFT JOIN 
+			repositories r ON j.repo_id = r.id
+	`
+	args := []interface{}{}
+
+	if repoFilter != "" {
+		query += " WHERE r.full_name = ?"
+		args = append(args, repoFilter)
+	}
+
+	query += " ORDER BY j.created_at DESC"
+
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("database query failed: %w", err)
 	}
 	defer rows.Close()
 
 	var jobs []shared.JobRequest
 	for rows.Next() {
 		var jobReq shared.JobRequest
-		var jobData, errorMsg, repo, msg, sha, ref, author sql.NullString
+		var jobData, errorMsg, repoName, commitMsg, commitSha, commitRef, commitAuthor sql.NullString
 		var createdAt, startedAt, finishedAt sql.NullTime
 
-		if err := rows.Scan(&jobReq.ID, &jobReq.Status, &jobData, &errorMsg, &repo, &msg, &sha, &ref, &author, &createdAt, &startedAt, &finishedAt); err != nil {
-			return nil, err
+		err := rows.Scan(
+			&jobReq.ID, &jobReq.Status, &jobData, &errorMsg, &repoName,
+			&commitMsg, &commitSha, &commitRef, &commitAuthor,
+			&createdAt, &startedAt, &finishedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan job row: %w", err)
 		}
+
+		// Process and assign the nullable fields
 		if jobData.Valid {
-			err := json.Unmarshal([]byte(jobData.String), &jobReq.Job)
-			if err != nil {
-				return nil, err
+			if err := json.Unmarshal([]byte(jobData.String), &jobReq.Job); err != nil {
+				return nil, fmt.Errorf("could not unmarshal job_data: %w", err)
 			}
 		}
 		if errorMsg.Valid {
 			jobReq.Error = errorMsg.String
 		}
+		if repoName.Valid {
+			jobReq.RepoName = repoName.String
+		}
+		if commitMsg.Valid {
+			jobReq.CommitMessage = commitMsg.String
+		}
+		if commitSha.Valid {
+			jobReq.CommitSHA = commitSha.String
+		}
+		if commitRef.Valid {
+			jobReq.CommitRef = commitRef.String
+		}
+		if commitAuthor.Valid {
+			jobReq.CommitAuthor = commitAuthor.String
+		}
+		if createdAt.Valid {
+			jobReq.CreatedAt = createdAt.Time
+		}
+		if startedAt.Valid {
+			jobReq.StartedAt = startedAt.Time
+		}
+		if finishedAt.Valid {
+			jobReq.FinishedAt = finishedAt.Time
+		}
+
 		jobs = append(jobs, jobReq)
 	}
+
+	// Check for any errors
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during job row iteration: %w", err)
+	}
+
 	return jobs, nil
+}
+
+// CreateArtifact records a new artifact in the database.
+func (s *Store) CreateArtifact(jobID, filename string, filesize int64, storagePath string) error {
+	query := `INSERT INTO artifacts (job_id, filename, filesize, storage_path) VALUES (?, ?, ?, ?)`
+	_, err := s.db.Exec(query, jobID, filename, filesize, storagePath)
+	if err != nil {
+		return fmt.Errorf("could not insert artifact record: %w", err)
+	}
+	return nil
+}
+
+// ListArtifactsForJob retrieves all artifacts associated with a specific job.
+func (s *Store) ListArtifactsForJob(jobID string) ([]shared.Artifact, error) {
+	query := `SELECT id, job_id, filename, filesize FROM artifacts WHERE job_id = ?`
+	rows, err := s.db.Query(query, jobID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var artifacts []shared.Artifact
+	for rows.Next() {
+		var art shared.Artifact
+		if err := rows.Scan(&art.ID, &art.JobID, &art.Filename, &art.Filesize); err != nil {
+			return nil, err
+		}
+		artifacts = append(artifacts, art)
+	}
+	return artifacts, nil
+}
+
+// GetArtifactByID retrieves a single artifact's details, including its storage path for download.
+func (s *Store) GetArtifactByID(artifactID int) (*shared.Artifact, error) {
+	var art shared.Artifact
+	query := `SELECT id, job_id, filename, filesize, storage_path FROM artifacts WHERE id = ?`
+	row := s.db.QueryRow(query, artifactID)
+	err := row.Scan(&art.ID, &art.JobID, &art.Filename, &art.Filesize, &art.StoragePath)
+	if err != nil {
+		return nil, err
+	}
+	return &art, nil
 }

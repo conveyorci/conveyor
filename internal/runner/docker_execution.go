@@ -5,6 +5,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
+	"time"
+
+	"archive/zip"
+	"bytes"
+	"io/fs"
+	"path/filepath"
 
 	"github.com/conveyorci/conveyor/internal/pipeline"
 	"github.com/docker/docker/api/types/container"
@@ -19,6 +26,56 @@ const GvisorRuntimeName = "runsc"
 // DockerExecutor implements the Executor interface for Docker.
 type DockerExecutor struct {
 	client *client.Client
+}
+
+// CreateArtifactsArchive finds files/dirs specified in the artifact paths,
+// zips them up, and returns the zip content as a byte buffer.
+func CreateArtifactsArchive(workspace string, paths []string) (*bytes.Buffer, error) {
+	buf := new(bytes.Buffer)
+	zipWriter := zip.NewWriter(buf)
+	defer zipWriter.Close()
+
+	for _, path := range paths {
+		fullPath := filepath.Join(workspace, path)
+
+		err := filepath.Walk(fullPath, func(filePath string, info fs.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return nil
+			}
+
+			// path for the file inside the zip
+			relPath, err := filepath.Rel(workspace, filePath)
+			if err != nil {
+				return err
+			}
+
+			// zipppy zip
+			zipFile, err := zipWriter.Create(relPath)
+			if err != nil {
+				return err
+			}
+
+			fsFile, err := os.Open(filePath)
+			if err != nil {
+				return err
+			}
+			defer fsFile.Close()
+
+			// copy
+			_, err = io.Copy(zipFile, fsFile)
+			return err
+		})
+
+		if err != nil {
+			log.Printf("WARN: Could not process artifact path '%s': %v", path, err)
+			// don't fail the whole job
+		}
+	}
+
+	return buf, nil
 }
 
 // NewDockerExecutor creates a new DockerExecutor and initializes the Docker client.
@@ -106,6 +163,27 @@ func (e *DockerExecutor) Execute(ctx context.Context, job pipeline.Job, workspac
 
 		if inspectResp.ExitCode != 0 {
 			return fmt.Errorf("command '%s' failed with exit code %d", cmdStr, inspectResp.ExitCode)
+		}
+	}
+
+	if len(job.Artifacts.Paths) > 0 {
+		fmt.Fprintln(logWriter, "\n--- Archiving artifacts ---")
+
+		archive, err := CreateArtifactsArchive(workspace, job.Artifacts.Paths)
+		if err != nil {
+			return fmt.Errorf("failed to create artifacts archive: %w", err)
+		}
+
+		if archive.Len() > 0 {
+			// TODO: implement agent's upload function
+			filename := fmt.Sprintf("artifacts_%s.zip", time.Now().Unix())
+			err := os.WriteFile(filename, archive.Bytes(), 0644)
+			if err != nil {
+				return fmt.Errorf("failed to save artifact archive: %w", err)
+			}
+			fmt.Fprintf(logWriter, "Successfully created artifact archive: %s\n", filename)
+		} else {
+			fmt.Fprintln(logWriter, "No artifact files found matching the specified paths.")
 		}
 	}
 
